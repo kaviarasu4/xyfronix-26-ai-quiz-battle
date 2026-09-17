@@ -1,136 +1,22 @@
-const API = (
-  window.XYF_CONFIG?.BACKEND_URL ||
-  window.location.origin
-).replace(/\/$/, "");
-
-
-// =====================================================
-// SOCKET.IO CONNECTION
-// =====================================================
-
-let socket = null;
-
-function setConnection(online) {
-  const el = document.getElementById("connection");
-
-  if (!el) return;
-
-  if (online) {
-    el.textContent = "● LIVE";
-    el.className = "connection live";
-  } else {
-    el.textContent = "● OFFLINE";
-    el.className = "connection offline";
-  }
-}
-
-
-try {
-
-  if (typeof io === "function") {
-
-    socket = io(API, {
-      transports: ["websocket", "polling"],
-      reconnection: true,
-      reconnectionAttempts: Infinity,
-      reconnectionDelay: 1000
-    });
-
-    socket.on("connect", () => {
-      console.log("Socket connected:", socket.id);
-      setConnection(true);
-
-      // Rejoin participant room after reconnect
-      if (state.participant) {
-        socket.emit(
-          "participant:join-room",
-          {
-            participantId: state.participant.id
-          }
-        );
-      }
-
-      // Rejoin coordinator room after reconnect
-      if (
-        sessionStorage.getItem("xyf_coord_token")
-      ) {
-        socket.emit("coordinator:join");
-      }
-    });
-
-
-    socket.on("disconnect", () => {
-      console.warn("Socket disconnected");
-      setConnection(false);
-    });
-
-
-    socket.on("connect_error", (err) => {
-      console.warn(
-        "Socket connection error:",
-        err.message
-      );
-
-      setConnection(false);
-    });
-
-  } else {
-
-    console.warn(
-      "Socket.IO client not available"
-    );
-
-    setConnection(false);
-  }
-
-} catch (err) {
-
-  console.error(
-    "Socket initialization error:",
-    err
-  );
-
-  setConnection(false);
-}
-
-
-
-// =====================================================
-// APP STATE
-// =====================================================
+const API = window.XYF_CONFIG.BACKEND_URL.replace(/\/$/, "");
+const socket = io(API, {
+  transports: ["websocket", "polling"]
+});
 
 let state = {
-
   participant: null,
-
   stage: null,
-
   quiz: null,
-
   questionIndex: 0,
-
   selected: null,
-
   answered: false,
-
   score: 0,
-
   position: null,
-
   timer: null,
-
   timeLeft: 0
-
 };
 
-
-// =====================================================
-// HELPERS
-// =====================================================
-
-const $ = (id) =>
-  document.getElementById(id);
-
+const $ = (id) => document.getElementById(id);
 
 const screens = [
   "home",
@@ -142,826 +28,543 @@ const screens = [
   "dashboard"
 ];
 
-
 function show(name) {
-
-  screens.forEach((screen) => {
-
-    const element =
-      $("screen-" + screen);
-
-    if (element) {
-
-      element.classList.toggle(
-        "active",
-        screen === name
-      );
-
+  screens.forEach((s) => {
+    const el = $("screen-" + s);
+    if (el) {
+      el.classList.toggle("active", s === name);
     }
-
   });
 
   window.scrollTo({
     top: 0,
     behavior: "smooth"
   });
-
 }
 
+function toast(msg) {
+  const el = $("toast");
 
-function toast(message) {
+  if (!el) return;
 
-  const element = $("toast");
-
-  if (!element) return;
-
-  element.textContent = message;
-
-  element.classList.add("show");
+  el.textContent = msg;
+  el.classList.add("show");
 
   setTimeout(() => {
-
-    element.classList.remove("show");
-
+    el.classList.remove("show");
   }, 2200);
-
 }
 
+function setConnection(online) {
+  const el = $("connection");
 
-function esc(value) {
+  if (!el) return;
 
-  return String(value)
-    .replace(
-      /[&<>"']/g,
-      (char) => ({
+  el.textContent = online
+    ? "● LIVE CONNECTED"
+    : "● OFFLINE";
+
+  el.className =
+    "connection " +
+    (online ? "online" : "offline");
+}
+
+function esc(s) {
+  return String(s).replace(
+    /[&<>"']/g,
+    (c) =>
+      ({
         "&": "&amp;",
         "<": "&lt;",
         ">": "&gt;",
         '"': "&quot;",
         "'": "&#039;"
-      }[char])
-    );
-
+      })[c]
+  );
 }
 
+/* =========================
+   SOCKET
+========================= */
 
-function ordinal(number) {
+socket.on("connect", () => {
+  setConnection(true);
 
-  if (!number) return "—";
+  if (state.participant?.id) {
+    socket.emit("participant:join-room", {
+      participantId: state.participant.id
+    });
+  }
+});
 
-  const value = number % 100;
+socket.on("disconnect", () => {
+  setConnection(false);
+});
 
-  if (
-    value >= 11 &&
-    value <= 13
-  ) {
+/* =========================
+   NAVIGATION
+========================= */
 
-    return number + "th";
+if ($("go-participant")) {
+  $("go-participant").onclick = () => {
+    show("join");
+  };
+}
 
+if ($("go-coordinator")) {
+  $("go-coordinator").onclick = () => {
+    show("coordinator");
+  };
+}
+
+if ($("result-home")) {
+  $("result-home").onclick = () => {
+    location.reload();
+  };
+}
+
+document.querySelectorAll("[data-back]").forEach((btn) => {
+  btn.onclick = () => {
+    show(btn.dataset.back);
+  };
+});
+
+/* =========================
+   PARTICIPANT JOIN
+========================= */
+
+$("join-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+
+  $("join-error").textContent = "";
+
+  const teamName =
+    $("team-name").value.trim();
+
+  const collegeName =
+    $("college-name").value.trim();
+
+  if (!teamName || !collegeName) {
+    $("join-error").textContent =
+      "Please enter Team Name and College Name.";
+
+    return;
   }
 
-  const last =
-    number % 10;
-
-  if (last === 1)
-    return number + "st";
-
-  if (last === 2)
-    return number + "nd";
-
-  if (last === 3)
-    return number + "rd";
-
-  return number + "th";
-
-}
-
-
-
-// =====================================================
-// HOME BUTTONS
-// =====================================================
-
-const participantButton =
-  $("go-participant");
-
-if (participantButton) {
-
-  participantButton.onclick = () => {
-
-    show("join");
-
-  };
-
-}
-
-
-const coordinatorButton =
-  $("go-coordinator");
-
-if (coordinatorButton) {
-
-  coordinatorButton.onclick = () => {
-
-    show("coordinator");
-
-  };
-
-}
-
-
-const resultHome =
-  $("result-home");
-
-if (resultHome) {
-
-  resultHome.onclick = () => {
-
-    location.reload();
-
-  };
-
-}
-
-
-document
-  .querySelectorAll("[data-back]")
-  .forEach((button) => {
-
-    button.onclick = () => {
-
-      show(button.dataset.back);
-
-    };
-
-  });
-
-
-
-// =====================================================
-// PARTICIPANT JOIN
-// =====================================================
-
-const joinForm =
-  $("join-form");
-
-
-if (joinForm) {
-
-  joinForm.addEventListener(
-    "submit",
-    async (event) => {
-
-      event.preventDefault();
-
-      $("join-error").textContent = "";
-
-
-      const teamName =
-        $("team-name")
-          .value
-          .trim();
-
-
-      const collegeName =
-        $("college-name")
-          .value
-          .trim();
-
-
-      if (!teamName || !collegeName) {
-
-        $("join-error").textContent =
-          "Please enter team and college name.";
-
-        return;
-
+  try {
+    const response = await fetch(
+      API + "/api/participant/join",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          teamName,
+          collegeName
+        })
       }
+    );
 
+    const data = await response.json();
 
-      try {
-
-        const response =
-          await fetch(
-            API +
-            "/api/participant/join",
-            {
-              method: "POST",
-
-              headers: {
-                "Content-Type":
-                  "application/json"
-              },
-
-              body: JSON.stringify({
-                teamName,
-                collegeName
-              })
-            }
-          );
-
-
-        const data =
-          await response.json();
-
-
-        if (!response.ok) {
-
-          throw new Error(
-            data.error ||
-            "Join failed"
-          );
-
-        }
-
-
-        state.participant =
-          data.participant;
-
-
-        state.score = 0;
-
-        state.position = null;
-
-
-        sessionStorage.setItem(
-          "xyf_participant_id",
-          state.participant.id
-        );
-
-
-        $("waiting-team")
-          .textContent =
-          teamName.toUpperCase();
-
-
-        $("waiting-college")
-          .textContent =
-          collegeName;
-
-
-        $("waiting-status")
-          .textContent =
-          "Waiting for coordinator…";
-
-
-        show("waiting");
-
-
-        if (socket) {
-
-          socket.emit(
-            "participant:join-room",
-            {
-              participantId:
-                state.participant.id
-            }
-          );
-
-        }
-
-
-        toast(
-          "Joined successfully!"
-        );
-
-
-      } catch (error) {
-
-        console.error(error);
-
-        $("join-error")
-          .textContent =
-          error.message ||
-          "Unable to join.";
-
-      }
-
-    }
-  );
-
-}
-
-
-
-// =====================================================
-// PARTICIPANT SOCKET EVENTS
-// =====================================================
-
-if (socket) {
-
-  socket.on(
-    "quiz:started",
-    (payload) => {
-
-      if (!state.participant)
-        return;
-
-
-      if (
-        payload.participantIds &&
-        !payload.participantIds.includes(
-          state.participant.id
-        )
-      ) {
-
-        return;
-
-      }
-
-
-      startStage(
-        payload.stage,
-        payload.durationSeconds
+    if (!response.ok) {
+      throw new Error(
+        data.error || "Join failed"
       );
-
     }
+
+    state.participant = data.participant;
+    state.score = 0;
+    state.position = null;
+
+    sessionStorage.setItem(
+      "xyf_participant_id",
+      state.participant.id
+    );
+
+    $("waiting-team").textContent =
+      teamName.toUpperCase();
+
+    $("waiting-college").textContent =
+      collegeName;
+
+    show("waiting");
+
+    socket.emit("participant:join-room", {
+      participantId: state.participant.id
+    });
+
+    toast("Joined successfully!");
+  } catch (error) {
+    $("join-error").textContent =
+      error.message;
+  }
+});
+
+/* =========================
+   QUIZ START
+========================= */
+
+socket.on("quiz:started", (payload) => {
+  if (!state.participant) return;
+
+  if (
+    payload.participantIds &&
+    !payload.participantIds.includes(
+      state.participant.id
+    )
+  ) {
+    return;
+  }
+
+  startStage(
+    payload.stage,
+    payload.durationSeconds
+  );
+});
+
+socket.on("quiz:finished", (payload) => {
+  if (!state.participant) return;
+
+  finishParticipant(
+    payload.final || false
+  );
+});
+
+/* =========================
+   PARTICIPANT REMOVED
+========================= */
+
+socket.on("participant:removed", () => {
+  sessionStorage.removeItem(
+    "xyf_participant_id"
   );
 
+  state.participant = null;
 
-  socket.on(
-    "quiz:finished",
-    (payload) => {
+  clearInterval(state.timer);
 
-      if (!state.participant)
-        return;
-
-
-      finishParticipant(
-        payload.final || false
-      );
-
-    }
+  alert(
+    "Your team has been removed by the coordinator."
   );
 
+  location.reload();
+});
 
-  socket.on(
-    "participant:update",
-    (participant) => {
+/* =========================
+   PARTICIPANT LIVE UPDATE
+========================= */
 
-      if (!state.participant)
-        return;
+socket.on("participant:update", (p) => {
+  if (!state.participant) return;
 
+  if (p.id !== state.participant.id) return;
 
-      if (
-        participant.id !==
-        state.participant.id
-      ) {
+  state.participant = p;
 
-        return;
+  if (state.stage === "A") {
+    state.score =
+      p.stage_a_score || 0;
+  }
 
-      }
+  if (state.stage === "B") {
+    state.score =
+      p.stage_b_score || 0;
+  }
 
+  if ($("quiz-score")) {
+    $("quiz-score").textContent =
+      state.score;
+  }
+});
 
-      state.participant =
-        participant;
-
-
-      if (state.stage === "A") {
-
-        state.score =
-          participant.stage_a_score || 0;
-
-      }
-
-
-      if (state.stage === "B") {
-
-        state.score =
-          participant.stage_b_score || 0;
-
-      }
-
-
-      const scoreElement =
-        $("quiz-score");
-
-      if (scoreElement) {
-
-        scoreElement.textContent =
-          state.score;
-
-      }
-
-    }
-  );
-
-}
-
-
-
-// =====================================================
-// START QUIZ STAGE
-// =====================================================
+/* =========================
+   START STAGE
+========================= */
 
 async function startStage(
   stage,
   durationSeconds
 ) {
-
-  state.stage =
-    stage;
+  state.stage = stage;
 
   state.questionIndex = 0;
-
   state.selected = null;
-
   state.answered = false;
-
 
   state.score =
     stage === "A"
-      ? (
-          state.participant
-            .stage_a_score || 0
-        )
-      : (
-          state.participant
-            .stage_b_score || 0
-        );
-
+      ? state.participant.stage_a_score || 0
+      : state.participant.stage_b_score || 0;
 
   state.timeLeft =
     durationSeconds;
 
-
-  $("quiz-team")
-    .textContent =
+  $("quiz-team").textContent =
     state.participant.team_name;
 
-
-  $("stage-chip")
-    .textContent =
+  $("stage-chip").textContent =
     stage === "A"
       ? "20 QUESTION QUIZ"
       : "25 SCENARIO QUIZ";
 
-
-  $("quiz-title")
-    .textContent =
+  $("quiz-title").textContent =
     stage === "A"
       ? "AI Prompt Challenge"
       : "AI Scenario Challenge";
 
-
-  $("quiz-score")
-    .textContent =
+  $("quiz-score").textContent =
     state.score;
 
-
-  $("quiz-position")
-    .textContent =
-    "—";
-
-
-  $("feedback")
-    .className =
+  $("feedback").className =
     "feedback hidden";
 
+  $("next-question").classList.add(
+    "hidden"
+  );
 
-  $("next-question")
-    .classList.add(
-      "hidden"
-    );
-
-
-  $("submit-answer")
-    .classList.remove(
-      "hidden"
-    );
-
+  $("submit-answer").classList.remove(
+    "hidden"
+  );
 
   show("quiz");
 
-
   await loadQuestion();
 
-
   startTimer();
-
 }
 
-
-
-// =====================================================
-// LOAD QUESTION
-// =====================================================
+/* =========================
+   LOAD QUESTION
+========================= */
 
 async function loadQuestion() {
-
   state.selected = null;
-
   state.answered = false;
 
+  $("submit-answer").disabled = true;
 
-  $("submit-answer")
-    .disabled = true;
+  $("submit-answer").classList.remove(
+    "hidden"
+  );
 
-
-  $("submit-answer")
-    .classList.remove(
-      "hidden"
-    );
-
-
-  $("feedback")
-    .className =
+  $("feedback").className =
     "feedback hidden";
 
-
-  $("next-question")
-    .classList.add(
-      "hidden"
-    );
-
+  $("next-question").classList.add(
+    "hidden"
+  );
 
   try {
+    const response = await fetch(
+      `${API}/api/quiz/${state.stage}/question/${state.questionIndex}?participantId=${encodeURIComponent(
+        state.participant.id
+      )}`
+    );
 
-    const response =
-      await fetch(
-        `${API}/api/quiz/${state.stage}/question/${state.questionIndex}`
-      );
-
-
-    const data =
-      await response.json();
-
+    const data = await response.json();
 
     if (!response.ok) {
-
       throw new Error(
         data.error ||
-        "Question load failed"
+          "Question load failed"
       );
-
     }
 
+    state.quiz = data;
 
-    state.quiz =
-      data;
-
-
-    $("question-number")
-      .textContent =
+    $("question-number").textContent =
       `Question ${
         state.questionIndex + 1
       } / ${data.total}`;
 
-
-    $("question-marks")
-      .textContent =
+    $("question-marks").textContent =
       `${data.marks} marks`;
 
-
-    $("question-text")
-      .textContent =
+    $("question-text").textContent =
       data.question;
 
+    /*
+      IMPORTANT:
 
-    $("options")
-      .innerHTML =
+      Backend sends a RANDOM option order.
+
+      Example:
+
+      Original:
+      A = Wrong
+      B = Correct
+      C = Wrong
+      D = Wrong
+
+      Display may become:
+
+      A = Wrong
+      B = Wrong
+      C = Correct
+      D = Wrong
+
+      optionMap keeps the original indexes.
+    */
+
+    $("options").innerHTML =
       data.options
         .map(
-          (option, index) => `
-            <label class="option">
+          (option, i) => `
+          <label class="option">
+            <input
+              type="radio"
+              name="answer"
+              value="${i}"
+            >
 
-              <input
-                type="radio"
-                name="answer"
-                value="${index}"
-              >
+            <span class="letter">
+              ${String.fromCharCode(
+                65 + i
+              )}
+            </span>
 
-              <span class="letter">
-                ${String.fromCharCode(
-                  65 + index
-                )}
-              </span>
-
-              <span class="option-text">
-                ${esc(option)}
-              </span>
-
-            </label>
-          `
+            <span class="option-text">
+              ${esc(option)}
+            </span>
+          </label>
+        `
         )
         .join("");
 
-
     document
       .querySelectorAll(".option")
-      .forEach(
-        (element, index) => {
+      .forEach((el, i) => {
+        el.onclick = () => {
+          if (state.answered) return;
 
-          element.onclick =
-            () => {
+          state.selected = i;
 
-              if (
-                state.answered
-              ) return;
-
-
-              state.selected =
-                index;
-
-
-              document
-                .querySelectorAll(
-                  ".option"
-                )
-                .forEach(
-                  (item) => {
-
-                    item.classList
-                      .remove(
-                        "selected"
-                      );
-
-                  }
-                );
-
-
-              element.classList.add(
+          document
+            .querySelectorAll(".option")
+            .forEach((x) =>
+              x.classList.remove(
                 "selected"
-              );
+              )
+            );
 
+          el.classList.add("selected");
 
-              $("submit-answer")
-                .disabled =
-                false;
+          $("submit-answer").disabled =
+            false;
+        };
+      });
+  } catch (error) {
+    toast(error.message);
+  }
+}
 
-            };
+/* =========================
+   SUBMIT ANSWER
+========================= */
 
+$("submit-answer").onclick =
+  async () => {
+    if (
+      state.selected === null ||
+      state.answered
+    ) {
+      return;
+    }
+
+    $("submit-answer").disabled =
+      true;
+
+    try {
+      /*
+        Convert visible option position
+        back to original question option.
+      */
+
+      const originalOption =
+        state.quiz.optionMap[
+          state.selected
+        ];
+
+      const response = await fetch(
+        API + "/api/quiz/answer",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type":
+              "application/json"
+          },
+
+          body: JSON.stringify({
+            participantId:
+              state.participant.id,
+
+            stage: state.stage,
+
+            questionIndex:
+              state.questionIndex,
+
+            selectedOption:
+              originalOption
+          })
         }
       );
 
+      const data =
+        await response.json();
 
-  } catch (error) {
-
-    console.error(error);
-
-    toast(
-      error.message ||
-      "Question loading failed."
-    );
-
-  }
-
-}
-
-
-
-// =====================================================
-// SUBMIT ANSWER
-// =====================================================
-
-const submitAnswer =
-  $("submit-answer");
-
-
-if (submitAnswer) {
-
-  submitAnswer.onclick =
-    async () => {
-
-      if (
-        state.selected === null ||
-        state.answered
-      ) {
-
-        return;
-
-      }
-
-
-      submitAnswer.disabled =
-        true;
-
-
-      try {
-
-        const response =
-          await fetch(
-            API +
-            "/api/quiz/answer",
-            {
-              method: "POST",
-
-              headers: {
-                "Content-Type":
-                  "application/json"
-              },
-
-              body: JSON.stringify({
-
-                participantId:
-                  state.participant.id,
-
-                stage:
-                  state.stage,
-
-                questionIndex:
-                  state.questionIndex,
-
-                selectedOption:
-                  state.selected
-
-              })
-            }
-          );
-
-
-        const data =
-          await response.json();
-
-
-        if (!response.ok) {
-
-          throw new Error(
-            data.error ||
+      if (!response.ok) {
+        throw new Error(
+          data.error ||
             "Submission failed"
-          );
-
-        }
-
-
-        state.answered =
-          true;
-
-
-        state.score =
-          data.score;
-
-
-        state.position =
-          data.position;
-
-
-        $("quiz-score")
-          .textContent =
-          data.score;
-
-
-        $("quiz-position")
-          .textContent =
-          ordinal(
-            data.position
-          );
-
-
-        showFeedback(data);
-
-
-      } catch (error) {
-
-        console.error(error);
-
-        submitAnswer.disabled =
-          false;
-
-
-        toast(
-          error.message ||
-          "Answer submission failed."
         );
-
       }
 
-    };
+      state.answered = true;
 
-}
+      state.score = data.score;
 
+      state.position =
+        data.position;
 
+      $("quiz-score").textContent =
+        data.score;
 
-// =====================================================
-// ANSWER FEEDBACK
-// =====================================================
+      $("quiz-position").textContent =
+        ordinal(data.position);
+
+      showFeedback(data);
+    } catch (error) {
+      $("submit-answer").disabled =
+        false;
+
+      toast(error.message);
+    }
+  };
+
+/* =========================
+   FEEDBACK
+========================= */
 
 function showFeedback(data) {
-
   const feedback =
     $("feedback");
 
-
   feedback.className =
     "feedback " +
-    (
-      data.correct
-        ? "correct"
-        : "wrong"
-    );
-
+    (data.correct
+      ? "correct"
+      : "wrong");
 
   feedback.innerHTML = `
-
     <b>
       ${
         data.correct
           ? "✓ CORRECT"
           : "✕ WRONG"
       }
-
-      · +${data.marksAwarded}
-      marks
+      · +${data.marksAwarded} marks
     </b>
 
     ${
@@ -985,993 +588,772 @@ function showFeedback(data) {
       · Current position:
       ${ordinal(data.position)}
     </small>
-
   `;
 
-
-  $("next-question")
-    .classList.remove(
-      "hidden"
-    );
-
-
-  $("submit-answer")
-    .classList.add(
-      "hidden"
-    );
-
-}
-
-
-
-// =====================================================
-// NEXT QUESTION
-// =====================================================
-
-const nextQuestion =
-  $("next-question");
-
-
-if (nextQuestion) {
-
-  nextQuestion.onclick =
-    async () => {
-
-      if (
-        state.questionIndex >=
-        state.quiz.total - 1
-      ) {
-
-        await finishParticipant(
-          false
-        );
-
-        return;
-
-      }
-
-
-      state.questionIndex++;
-
-
-      $("submit-answer")
-        .classList.remove(
-          "hidden"
-        );
-
-
-      await loadQuestion();
-
-    };
-
-}
-
-
-
-// =====================================================
-// TIMER
-// =====================================================
-
-function startTimer() {
-
-  clearInterval(
-    state.timer
+  $("next-question").classList.remove(
+    "hidden"
   );
 
+  $("submit-answer").classList.add(
+    "hidden"
+  );
+}
+
+/* =========================
+   NEXT QUESTION
+========================= */
+
+$("next-question").onclick =
+  async () => {
+    if (
+      state.questionIndex >=
+      state.quiz.total - 1
+    ) {
+      await finishParticipant(false);
+      return;
+    }
+
+    state.questionIndex++;
+
+    await loadQuestion();
+  };
+
+/* =========================
+   TIMER
+========================= */
+
+function startTimer() {
+  clearInterval(state.timer);
 
   renderTimer();
 
-
   state.timer =
-    setInterval(
-      () => {
+    setInterval(() => {
+      state.timeLeft--;
 
-        state.timeLeft--;
+      renderTimer();
 
+      if (state.timeLeft <= 0) {
+        clearInterval(
+          state.timer
+        );
 
-        renderTimer();
-
-
-        if (
-          state.timeLeft <= 0
-        ) {
-
-          clearInterval(
-            state.timer
-          );
-
-
-          autoFinish();
-
-        }
-
-      },
-      1000
-    );
-
+        autoFinish();
+      }
+    }, 1000);
 }
 
-
 function renderTimer() {
-
   const minutes =
     Math.floor(
       state.timeLeft / 60
     );
 
-
   const seconds =
     state.timeLeft % 60;
-
 
   const timer =
     $("timer");
 
-
-  if (!timer) return;
-
-
   timer.textContent =
-    `${String(minutes)
-      .padStart(2, "0")
-    }:${
-      String(seconds)
-        .padStart(2, "0")
-    }`;
-
+    `${String(minutes).padStart(
+      2,
+      "0"
+    )}:${String(seconds).padStart(
+      2,
+      "0"
+    )}`;
 
   timer.classList.toggle(
     "warning",
     state.timeLeft <= 60 &&
-    state.timeLeft > 20
+      state.timeLeft > 20
   );
-
 
   timer.classList.toggle(
     "danger",
     state.timeLeft <= 20
   );
-
 }
 
-
-
-// =====================================================
-// AUTO FINISH
-// =====================================================
+/* =========================
+   AUTO FINISH
+========================= */
 
 async function autoFinish() {
-
   try {
-
     await fetch(
-      API +
-      "/api/quiz/finish",
+      API + "/api/quiz/finish",
       {
         method: "POST",
-
         headers: {
           "Content-Type":
             "application/json"
         },
 
         body: JSON.stringify({
-
           participantId:
             state.participant.id,
 
-          stage:
-            state.stage
-
+          stage: state.stage
         })
-
       }
     );
+  } catch (e) {}
 
-  } catch (error) {
-
-    console.warn(
-      "Auto finish error:",
-      error
-    );
-
-  }
-
-
-  await finishParticipant(
-    false
-  );
-
+  await finishParticipant(false);
 }
 
-
-
-// =====================================================
-// PARTICIPANT RESULT
-// =====================================================
+/* =========================
+   RESULT
+========================= */
 
 async function finishParticipant(
   final
 ) {
-
-  clearInterval(
-    state.timer
-  );
-
+  clearInterval(state.timer);
 
   try {
-
     const response =
       await fetch(
         `${API}/api/participant/${state.participant.id}/summary`
       );
 
-
     const data =
       await response.json();
 
-
-    const summary =
+    const result =
       state.stage === "A"
         ? data.stageA
         : data.stageB;
 
-
-    $("result-team")
-      .textContent =
+    $("result-team").textContent =
       state.participant.team_name;
 
+    $("result-score").textContent =
+      result.score;
 
-    $("result-score")
-      .textContent =
-      summary.score;
+    $("result-correct").textContent =
+      result.correct;
 
+    $("result-position").textContent =
+      ordinal(result.position);
 
-    $("result-correct")
-      .textContent =
-      summary.correct;
-
-
-    $("result-position")
-      .textContent =
-      ordinal(
-        summary.position
-      );
-
-
-    $("result-note")
-      .textContent =
+    $("result-note").textContent =
       final
         ? "Event completed."
-        : (
-            state.stage === "A"
-              ? "Waiting for the next quiz from the coordinator."
-              : "Your submission has been recorded."
-          );
-
+        : state.stage === "A"
+        ? "Waiting for the next quiz from the coordinator."
+        : "Your submission has been recorded.";
 
     show("result");
-
-
   } catch (error) {
-
-    console.error(error);
-
     show("result");
+  }
+}
 
+/* =========================
+   ORDINAL
+========================= */
+
+function ordinal(n) {
+  if (!n) return "—";
+
+  const value = n % 100;
+
+  if (
+    value >= 11 &&
+    value <= 13
+  ) {
+    return n + "th";
   }
 
+  const last =
+    n % 10;
+
+  if (last === 1)
+    return n + "st";
+
+  if (last === 2)
+    return n + "nd";
+
+  if (last === 3)
+    return n + "rd";
+
+  return n + "th";
 }
 
+/* =========================
+   COORDINATOR LOGIN
+========================= */
 
+$("coord-form").addEventListener(
+  "submit",
+  async (e) => {
+    e.preventDefault();
 
-// =====================================================
-// COORDINATOR LOGIN
-// =====================================================
+    $("coord-error").textContent =
+      "";
 
-const coordinatorForm =
-  $("coord-form");
-
-
-if (coordinatorForm) {
-
-  coordinatorForm.addEventListener(
-    "submit",
-    async (event) => {
-
-      event.preventDefault();
-
-
-      $("coord-error")
-        .textContent = "";
-
-
-      const code =
-        $("coord-code")
-          .value
-          .trim();
-
-
-      try {
-
-        const response =
-          await fetch(
-            API +
+    try {
+      const response =
+        await fetch(
+          API +
             "/api/coordinator/login",
-            {
-              method: "POST",
+          {
+            method: "POST",
 
-              headers: {
-                "Content-Type":
-                  "application/json"
-              },
+            headers: {
+              "Content-Type":
+                "application/json"
+            },
 
-              body: JSON.stringify({
-                code
-              })
-
-            }
-          );
-
-
-        const data =
-          await response.json();
-
-
-        if (!response.ok) {
-
-          throw new Error(
-            data.error ||
-            "Invalid code"
-          );
-
-        }
-
-
-        sessionStorage.setItem(
-          "xyf_coord_token",
-          data.token
+            body: JSON.stringify({
+              code: $(
+                "coord-code"
+              ).value.trim()
+            })
+          }
         );
 
+      const data =
+        await response.json();
 
-        show("dashboard");
-
-
-        await loadDashboard();
-
-
-        if (socket) {
-
-          socket.emit(
-            "coordinator:join"
-          );
-
-        }
-
-
-      } catch (error) {
-
-        console.error(error);
-
-        $("coord-error")
-          .textContent =
-          error.message ||
-          "Login failed.";
-
+      if (!response.ok) {
+        throw new Error(
+          data.error ||
+            "Invalid code"
+        );
       }
 
+      sessionStorage.setItem(
+        "xyf_coord_token",
+        data.token
+      );
+
+      show("dashboard");
+
+      loadDashboard();
+
+      socket.emit(
+        "coordinator:join"
+      );
+    } catch (error) {
+      $("coord-error").textContent =
+        error.message;
     }
-  );
+  }
+);
 
-}
-
-
-
-// =====================================================
-// COORDINATOR API
-// =====================================================
+/* =========================
+   COORDINATOR AUTH
+========================= */
 
 async function authFetch(
   url,
   options = {}
 ) {
-
   options.headers = {
-
     ...(options.headers || {}),
 
     "x-coordinator-token":
       sessionStorage.getItem(
         "xyf_coord_token"
       ) || ""
-
   };
-
 
   return fetch(
     API + url,
     options
   );
-
 }
 
-
-
-// =====================================================
-// LOAD DASHBOARD
-// =====================================================
+/* =========================
+   DASHBOARD
+========================= */
 
 async function loadDashboard() {
-
-  try {
-
-    const response =
-      await authFetch(
-        "/api/coordinator/state"
-      );
-
-
-    if (!response.ok) {
-
-      show("coordinator");
-
-      return;
-
-    }
-
-
-    const data =
-      await response.json();
-
-
-    renderDashboard(data);
-
-  } catch (error) {
-
-    console.error(
-      "Dashboard error:",
-      error
+  const response =
+    await authFetch(
+      "/api/coordinator/state"
     );
 
-    toast(
-      "Unable to load dashboard."
-    );
-
+  if (!response.ok) {
+    show("coordinator");
+    return;
   }
 
+  const data =
+    await response.json();
+
+  renderDashboard(data);
 }
 
+socket.on(
+  "dashboard:update",
+  (data) => {
+    renderDashboard(data);
+  }
+);
 
-
-// =====================================================
-// DASHBOARD REALTIME
-// =====================================================
-
-if (socket) {
-
-  socket.on(
-    "dashboard:update",
-    (data) => {
-
-      renderDashboard(data);
-
-    }
-  );
-
-}
-
-
-
-// =====================================================
-// RENDER DASHBOARD
-// =====================================================
+/* =========================
+   RENDER DASHBOARD
+========================= */
 
 function renderDashboard(data) {
-
   const participants =
     data.participants || [];
 
-
-  $("stat-total")
-    .textContent =
+  $("stat-total").textContent =
     participants.length;
 
-
-  $("stat-live")
-    .textContent =
+  $("stat-live").textContent =
     participants.filter(
-      (item) =>
-        item.status === "live"
+      (p) =>
+        p.status === "live"
     ).length;
 
-
-  $("stat-submitted")
-    .textContent =
+  $("stat-waiting").textContent =
     participants.filter(
-      (item) =>
-        item.status ===
-        "submitted"
+      (p) =>
+        p.status === "waiting"
     ).length;
 
+  $("stat-finished").textContent =
+    participants.filter(
+      (p) =>
+        p.status === "submitted"
+    ).length;
 
-  const quiz =
-    data.quiz || {};
+  renderParticipantTable(
+    participants
+  );
 
+  renderLeaderboard(
+    participants
+  );
 
-  $("stat-status")
-    .textContent =
-    (
-      quiz.status ||
-      "waiting"
-    ).toUpperCase();
+  if (data.quiz) {
+    $("monitor-stage").textContent =
+      data.quiz.activeStage ||
+      "—";
 
+    $("monitor-status").textContent =
+      data.quiz.status ||
+      "WAITING";
+  }
+}
 
-  $("dash-stage-title")
-    .textContent =
-    quiz.activeStage === "A"
-      ? "20 Question Quiz"
-      : quiz.activeStage === "B"
-        ? "25 Scenario Quiz"
-        : "Waiting to start";
+/* =========================
+   LIVE MONITOR
+========================= */
 
+function renderParticipantTable(
+  participants
+) {
+  const tbody =
+    $("participant-table-body");
 
-  $("dash-stage-chip")
-    .textContent =
-    quiz.activeStage
-      ? `STAGE ${quiz.activeStage}`
-      : "IDLE";
+  if (!tbody) return;
 
+  if (!participants.length) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="9">
+          No participants yet.
+        </td>
+      </tr>
+    `;
 
-  const stage =
-    quiz.activeStage;
+    return;
+  }
 
-
-  const leaderboard =
-    [...participants]
-      .sort(
-        (first, second) => {
-
-          const firstScore =
-            stage === "B"
-              ? first.stage_b_score
-              : first.stage_a_score;
-
-
-          const secondScore =
-            stage === "B"
-              ? second.stage_b_score
-              : second.stage_a_score;
-
-
-          return (
-            secondScore -
-            firstScore
-          );
-
-        }
-      );
-
-
-  $("leaderboard-body")
-    .innerHTML =
-    leaderboard
+  tbody.innerHTML =
+    participants
       .map(
-        (participant, index) => {
+        (p, index) => `
+        <tr>
 
-          const score =
-            stage === "B"
-              ? participant.stage_b_score
-              : participant.stage_a_score;
+          <td>
+            ${index + 1}
+          </td>
 
+          <td>
+            <strong>
+              ${esc(
+                p.team_name
+              )}
+            </strong>
+          </td>
 
-          const correct =
-            stage === "B"
-              ? participant.stage_b_correct
-              : participant.stage_a_correct;
+          <td>
+            ${esc(
+              p.college_name
+            )}
+          </td>
 
+          <td>
+            ${p.stage_a_score || 0}
+          </td>
 
-          const used =
-            stage === "B"
-              ? participant.stage_b_used
-              : participant.stage_a_used;
+          <td>
+            ${p.stage_b_score || 0}
+          </td>
 
+          <td>
+            ${
+              (p.stage_a_score || 0) +
+              (p.stage_b_score || 0)
+            }
+          </td>
 
-          return `
+          <td>
+            <span class="status-badge ${p.status}">
+              ${String(
+                p.status || ""
+              ).toUpperCase()}
+            </span>
+          </td>
 
-            <tr>
+          <td>
+            ${formatUsed(
+              p.stage_a_used
+            )}
+            /
+            ${formatUsed(
+              p.stage_b_used
+            )}
+          </td>
 
-              <td>
-                ${index + 1}
-              </td>
+          <td>
+            ${
+              p.status === "live"
+                ? `
+                  <button
+                    class="delete-btn"
+                    disabled
+                    title="Cannot delete while quiz is live"
+                  >
+                    LIVE
+                  </button>
+                `
+                : `
+                  <button
+                    class="delete-btn"
+                    onclick="deleteParticipant('${p.id}')"
+                  >
+                    DELETE
+                  </button>
+                `
+            }
+          </td>
 
-              <td>
-                ${esc(
-                  participant.team_name
-                )}
-              </td>
-
-              <td>
-                ${esc(
-                  participant.college_name
-                )}
-              </td>
-
-              <td>
-                ${score}
-              </td>
-
-              <td>
-                ${correct}/${used}
-              </td>
-
-              <td
-                class="status-${participant.status}"
-              >
-                ${participant.status
-                  .toUpperCase()}
-              </td>
-
-              <td>
-                ${
-                  participant.completed_at
-                    ? new Date(
-                        participant.completed_at
-                      ).toLocaleTimeString()
-                    : "—"
-                }
-              </td>
-
-            </tr>
-
-          `;
-
-        }
+        </tr>
+      `
       )
       .join("");
-
 }
 
-
-
-// =====================================================
-// START QUIZ - COORDINATOR
-// =====================================================
-
-const startA =
-  $("start-a");
-
-
-if (startA) {
-
-  startA.onclick =
-    () =>
-      startQuizCoordinator(
-        "A"
-      );
-
+function formatUsed(value) {
+  return value || 0;
 }
 
+/* =========================
+   DELETE PARTICIPANT
+========================= */
 
-const startB =
-  $("start-b");
-
-
-if (startB) {
-
-  startB.onclick =
-    () =>
-      startQuizCoordinator(
-        "B"
-      );
-
-}
-
-
-
-// =====================================================
-// FINISH QUIZ
-// =====================================================
-
-const finishLive =
-  $("finish-live");
-
-
-if (finishLive) {
-
-  finishLive.onclick =
-    async () => {
-
-      if (
-        !confirm(
-          "Finish the current quiz for all participants?"
-        )
-      ) {
-
-        return;
-
-      }
-
-
-      try {
-
-        const response =
-          await authFetch(
-            "/api/coordinator/finish",
-            {
-              method: "POST"
-            }
-          );
-
-
-        const data =
-          await response.json();
-
-
-        if (!response.ok) {
-
-          throw new Error(
-            data.error ||
-            "Unable to finish quiz."
-          );
-
-        }
-
-
-        toast(
-          "Current quiz finished."
-        );
-
-
-      } catch (error) {
-
-        console.error(error);
-
-        toast(
-          error.message
-        );
-
-      }
-
-    };
-
-}
-
-
-
-// =====================================================
-// START QUIZ API
-// =====================================================
-
-async function startQuizCoordinator(
-  stage
+async function deleteParticipant(
+  participantId
 ) {
+  const participant =
+    prompt(
+      "Type DELETE to remove this participant:"
+    );
+
+  if (participant !== "DELETE") {
+    toast("Delete cancelled.");
+    return;
+  }
 
   try {
-
     const response =
       await authFetch(
-        "/api/coordinator/start",
+        `/api/coordinator/participant/${participantId}`,
         {
-
-          method: "POST",
-
-          headers: {
-            "Content-Type":
-              "application/json"
-          },
-
-          body: JSON.stringify({
-            stage
-          })
-
+          method: "DELETE"
         }
       );
-
 
     const data =
       await response.json();
 
-
     if (!response.ok) {
-
       throw new Error(
         data.error ||
-        "Could not start quiz."
+          "Delete failed"
       );
-
     }
 
-
     toast(
-      stage === "A"
-        ? "20-question quiz started!"
-        : "25-scenario quiz started!"
+      "Participant deleted successfully."
     );
 
-
+    loadDashboard();
   } catch (error) {
-
-    console.error(error);
-
-    toast(
-      error.message ||
-      "Could not start quiz."
-    );
-
+    toast(error.message);
   }
-
 }
 
+/* Make function available to HTML */
+window.deleteParticipant =
+  deleteParticipant;
 
+/* =========================
+   LEADERBOARD
+========================= */
 
-// =====================================================
-// CSV EXPORT
-// =====================================================
+function renderLeaderboard(
+  participants
+) {
+  const body =
+    $("leaderboard-body");
 
-const exportCsv =
-  $("export-csv");
+  if (!body) return;
 
+  const sorted =
+    [...participants].sort(
+      (a, b) => {
+        const totalA =
+          (a.stage_a_score || 0) +
+          (a.stage_b_score || 0);
 
-if (exportCsv) {
+        const totalB =
+          (b.stage_a_score || 0) +
+          (b.stage_b_score || 0);
 
-  exportCsv.onclick =
-    async () => {
+        return totalB - totalA;
+      }
+    );
 
-      try {
+  body.innerHTML =
+    sorted
+      .map(
+        (p, index) => `
+        <tr>
 
-        const response =
-          await authFetch(
-            "/api/coordinator/export"
-          );
+          <td class="rank">
+            ${index + 1}
+          </td>
 
+          <td>
+            ${esc(
+              p.team_name
+            )}
+          </td>
 
-        if (!response.ok) {
+          <td>
+            ${esc(
+              p.college_name
+            )}
+          </td>
 
-          throw new Error(
-            "Export failed"
-          );
+          <td>
+            ${
+              (p.stage_a_score || 0) +
+              (p.stage_b_score || 0)
+            }
+          </td>
 
-        }
+          <td>
+            ${String(
+              p.status || ""
+            ).toUpperCase()}
+          </td>
 
+        </tr>
+      `
+      )
+      .join("");
+}
 
-        const blob =
-          await response.blob();
+/* =========================
+   COORDINATOR START
+========================= */
 
+window.startStageFromCoordinator =
+  async function (stage) {
+    try {
+      const response =
+        await authFetch(
+          "/api/coordinator/start",
+          {
+            method: "POST",
 
-        const url =
-          URL.createObjectURL(
-            blob
-          );
+            headers: {
+              "Content-Type":
+                "application/json"
+            },
 
-
-        const link =
-          document.createElement(
-            "a"
-          );
-
-
-        link.href =
-          url;
-
-
-        link.download =
-          "xyfronix-ai-prompt-battle-results.csv";
-
-
-        document.body.appendChild(
-          link
+            body: JSON.stringify({
+              stage
+            })
+          }
         );
 
+      const data =
+        await response.json();
 
-        link.click();
-
-
-        link.remove();
-
-
-        URL.revokeObjectURL(
-          url
+      if (!response.ok) {
+        throw new Error(
+          data.error ||
+            "Unable to start quiz"
         );
-
-
-      } catch (error) {
-
-        console.error(error);
-
-        toast(
-          error.message ||
-          "Export failed."
-        );
-
       }
 
-    };
+      toast(
+        `Quiz ${stage} started successfully.`
+      );
 
-}
+      loadDashboard();
+    } catch (error) {
+      toast(error.message);
+    }
+  };
 
+/* =========================
+   COORDINATOR FINISH
+========================= */
 
+window.finishCurrentQuiz =
+  async function () {
+    if (
+      !confirm(
+        "Finish the current quiz?"
+      )
+    ) {
+      return;
+    }
 
-// =====================================================
-// RESTORE PARTICIPANT SESSION
-// =====================================================
+    try {
+      const response =
+        await authFetch(
+          "/api/coordinator/finish",
+          {
+            method: "POST"
+          }
+        );
 
-(async function restoreParticipant() {
+      const data =
+        await response.json();
 
-  const participantId =
+      if (!response.ok) {
+        throw new Error(
+          data.error ||
+            "Unable to finish quiz"
+        );
+      }
+
+      toast(
+        "Quiz finished successfully."
+      );
+
+      loadDashboard();
+    } catch (error) {
+      toast(error.message);
+    }
+  };
+
+/* =========================
+   EXPORT CSV
+========================= */
+
+window.exportResults =
+  async function () {
+    try {
+      const response =
+        await authFetch(
+          "/api/coordinator/export"
+        );
+
+      if (!response.ok) {
+        throw new Error(
+          "Export failed"
+        );
+      }
+
+      const blob =
+        await response.blob();
+
+      const url =
+        URL.createObjectURL(
+          blob
+        );
+
+      const a =
+        document.createElement(
+          "a"
+        );
+
+      a.href = url;
+
+      a.download =
+        "xyfronix-ai-prompt-battle-results.csv";
+
+      document.body.appendChild(a);
+
+      a.click();
+
+      a.remove();
+
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      toast(error.message);
+    }
+  };
+
+/* =========================
+   RESTORE PARTICIPANT
+========================= */
+
+async function restoreParticipant() {
+  const id =
     sessionStorage.getItem(
       "xyf_participant_id"
     );
 
-
-  if (!participantId)
-    return;
-
+  if (!id) return;
 
   try {
-
     const response =
       await fetch(
-        `${API}/api/participant/${participantId}`
+        `${API}/api/participant/${id}`
       );
 
+    if (!response.ok) return;
 
-    if (!response.ok)
-      return;
-
-
-    state.participant =
+    const participant =
       await response.json();
 
+    state.participant =
+      participant;
 
-    $("waiting-team")
-      .textContent =
-      state.participant
-        .team_name
-        .toUpperCase();
+    $("waiting-team").textContent =
+      participant.team_name.toUpperCase();
 
+    $("waiting-college").textContent =
+      participant.college_name;
 
-    $("waiting-college")
-      .textContent =
-      state.participant
-        .college_name;
-
-
-    if (socket) {
-
-      socket.emit(
-        "participant:join-room",
-        {
-          participantId
-        }
-      );
-
-    }
-
-
-  } catch (error) {
-
-    console.warn(
-      "Session restore failed:",
-      error
+    socket.emit(
+      "participant:join-room",
+      {
+        participantId: id
+      }
     );
-
+  } catch (error) {
+    console.log(
+      "Session restore failed"
+    );
   }
-
-})();
-
-
-// =====================================================
-// INITIAL STATUS
-// =====================================================
-
-if (socket && socket.connected) {
-
-  setConnection(true);
-
-} else {
-
-  // Keep UI usable while Socket.IO connects.
-  // Actual connection state will update automatically.
-  setConnection(false);
-
 }
+
+restoreParticipant();
