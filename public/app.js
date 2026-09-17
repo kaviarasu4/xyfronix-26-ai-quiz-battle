@@ -44,7 +44,17 @@ let state = {
 
   timer: null,
 
-  timeLeft: 0
+  timeLeft: 0,
+
+  // Prevent duplicate finish requests
+  quizClosing: false,
+
+  // True when quiz was closed because
+  // participant left the page
+  quizClosedByVisibility: false,
+
+  // Prevent repeated visibility handling
+  visibilityProcessing: false
 };
 
 
@@ -72,18 +82,22 @@ function show(name) {
     const el = $("screen-" + screen);
 
     if (el) {
+
       el.classList.toggle(
         "active",
         screen === name
       );
+
     }
 
   });
+
 
   window.scrollTo({
     top: 0,
     behavior: "smooth"
   });
+
 }
 
 
@@ -97,9 +111,13 @@ function toast(message) {
 
   el.classList.add("show");
 
+
   setTimeout(() => {
+
     el.classList.remove("show");
+
   }, 2500);
+
 }
 
 
@@ -109,17 +127,22 @@ function setConnection(online) {
 
   if (!el) return;
 
+
   if (online) {
 
-    el.textContent = "● LIVE CONNECTED";
+    el.textContent =
+      "● LIVE CONNECTED";
 
-    el.className = "connection online";
+    el.className =
+      "connection online";
 
   } else {
 
-    el.textContent = "● OFFLINE";
+    el.textContent =
+      "● OFFLINE";
 
-    el.className = "connection offline";
+    el.className =
+      "connection offline";
 
   }
 
@@ -129,19 +152,22 @@ function setConnection(online) {
 function esc(value) {
 
   return String(value ?? "")
-    .replace(/[&<>"']/g, (char) => {
+    .replace(
+      /[&<>"']/g,
+      (char) => {
 
-      const map = {
-        "&": "&amp;",
-        "<": "&lt;",
-        ">": "&gt;",
-        '"': "&quot;",
-        "'": "&#039;"
-      };
+        const map = {
+          "&": "&amp;",
+          "<": "&lt;",
+          ">": "&gt;",
+          '"': "&quot;",
+          "'": "&#039;"
+        };
 
-      return map[char];
+        return map[char];
 
-    });
+      }
+    );
 
 }
 
@@ -152,35 +178,52 @@ function ordinal(number) {
 
   const n = Number(number);
 
-  const lastTwo = n % 100;
+  const lastTwo =
+    n % 100;
 
-  if (lastTwo >= 11 && lastTwo <= 13) {
+
+  if (
+    lastTwo >= 11 &&
+    lastTwo <= 13
+  ) {
+
     return n + "th";
+
   }
 
-  const last = n % 10;
+
+  const last =
+    n % 10;
+
 
   if (last === 1) return n + "st";
+
   if (last === 2) return n + "nd";
+
   if (last === 3) return n + "rd";
 
+
   return n + "th";
+
 }
 
 
 /* =========================================================
    SAFE JSON FETCH
-   Prevents:
-   Unexpected token '<'
 ========================================================= */
 
 async function readResponse(response) {
 
-  const text = await response.text();
+  const text =
+    await response.text();
+
 
   if (!text) {
+
     return {};
+
   }
+
 
   try {
 
@@ -192,6 +235,7 @@ async function readResponse(response) {
       "Server returned non-JSON:",
       text.substring(0, 500)
     );
+
 
     throw new Error(
       "Server API error. Please check the Render server/API route."
@@ -206,45 +250,64 @@ async function readResponse(response) {
    SOCKET EVENTS
 ========================================================= */
 
-socket.on("connect", () => {
+socket.on(
+  "connect",
+  () => {
 
-  console.log("Socket connected:", socket.id);
-
-  setConnection(true);
-
-  if (state.participant?.id) {
-
-    socket.emit(
-      "participant:join-room",
-      {
-        participantId: state.participant.id
-      }
+    console.log(
+      "Socket connected:",
+      socket.id
     );
 
+
+    setConnection(true);
+
+
+    if (
+      state.participant?.id
+    ) {
+
+      socket.emit(
+        "participant:join-room",
+        {
+          participantId:
+            state.participant.id
+        }
+      );
+
+    }
+
   }
-
-});
-
-
-socket.on("disconnect", () => {
-
-  console.warn("Socket disconnected");
-
-  setConnection(false);
-
-});
+);
 
 
-socket.on("connect_error", (error) => {
+socket.on(
+  "disconnect",
+  () => {
 
-  console.error(
-    "Socket connection error:",
-    error
-  );
+    console.warn(
+      "Socket disconnected"
+    );
 
-  setConnection(false);
+    setConnection(false);
 
-});
+  }
+);
+
+
+socket.on(
+  "connect_error",
+  (error) => {
+
+    console.error(
+      "Socket connection error:",
+      error
+    );
+
+    setConnection(false);
+
+  }
+);
 
 
 /* =========================================================
@@ -253,43 +316,60 @@ socket.on("connect_error", (error) => {
 
 if ($("go-participant")) {
 
-  $("go-participant").onclick = () => {
-    show("join");
-  };
+  $("go-participant").onclick =
+    () => {
+
+      show("join");
+
+    };
 
 }
 
 
 if ($("go-coordinator")) {
 
-  $("go-coordinator").onclick = () => {
-    show("coordinator");
-  };
+  $("go-coordinator").onclick =
+    () => {
+
+      show("coordinator");
+
+    };
 
 }
 
 
 if ($("result-home")) {
 
-  $("result-home").onclick = () => {
-    sessionStorage.removeItem("xyf_participant_id");
-    location.reload();
-  };
+  $("result-home").onclick =
+    () => {
+
+      sessionStorage.removeItem(
+        "xyf_participant_id"
+      );
+
+      location.reload();
+
+    };
 
 }
 
 
 document
   .querySelectorAll("[data-back]")
-  .forEach((button) => {
+  .forEach(
+    (button) => {
 
-    button.onclick = () => {
+      button.onclick =
+        () => {
 
-      show(button.dataset.back);
+          show(
+            button.dataset.back
+          );
 
-    };
+        };
 
-  });
+    }
+  );
 
 
 /* =========================================================
@@ -304,16 +384,27 @@ if ($("join-form")) {
 
       event.preventDefault();
 
-      $("join-error").textContent = "";
+
+      $("join-error").textContent =
+        "";
+
 
       const teamName =
-        $("team-name").value.trim();
+        $("team-name")
+          .value
+          .trim();
+
 
       const collegeName =
-        $("college-name").value.trim();
+        $("college-name")
+          .value
+          .trim();
 
 
-      if (!teamName || !collegeName) {
+      if (
+        !teamName ||
+        !collegeName
+      ) {
 
         $("join-error").textContent =
           "Please enter team name and college name.";
@@ -325,31 +416,37 @@ if ($("join-form")) {
 
       try {
 
-        const response = await fetch(
-          API + "/api/participant/join",
-          {
-            method: "POST",
+        const response =
+          await fetch(
+            API +
+            "/api/participant/join",
+            {
+              method: "POST",
 
-            headers: {
-              "Content-Type": "application/json"
-            },
+              headers: {
+                "Content-Type":
+                  "application/json"
+              },
 
-            body: JSON.stringify({
-              teamName,
-              collegeName
-            })
-          }
-        );
+              body: JSON.stringify({
+                teamName,
+                collegeName
+              })
+            }
+          );
 
 
         const data =
-          await readResponse(response);
+          await readResponse(
+            response
+          );
 
 
         if (!response.ok) {
 
           throw new Error(
-            data.error || "Join failed"
+            data.error ||
+            "Join failed"
           );
 
         }
@@ -358,9 +455,17 @@ if ($("join-form")) {
         state.participant =
           data.participant;
 
+
         state.score = 0;
 
         state.position = null;
+
+        state.stage = null;
+
+        state.quizClosing = false;
+
+        state.quizClosedByVisibility =
+          false;
 
 
         sessionStorage.setItem(
@@ -371,6 +476,7 @@ if ($("join-form")) {
 
         $("waiting-team").textContent =
           teamName.toUpperCase();
+
 
         $("waiting-college").textContent =
           collegeName;
@@ -392,7 +498,10 @@ if ($("join-form")) {
         );
 
 
-        toast("Joined successfully");
+        toast(
+          "Joined successfully"
+        );
+
 
       } catch (error) {
 
@@ -400,6 +509,7 @@ if ($("join-form")) {
           "Join error:",
           error
         );
+
 
         $("join-error").textContent =
           error.message;
@@ -426,8 +536,12 @@ socket.on(
     );
 
 
-    if (!state.participant) {
+    if (
+      !state.participant
+    ) {
+
       return;
+
     }
 
 
@@ -466,12 +580,32 @@ socket.on(
     );
 
 
-    if (!state.participant) {
+    if (
+      !state.participant
+    ) {
+
       return;
+
     }
 
 
     if (state.stage) {
+
+      /*
+        If participant already closed the quiz
+        because of visibility, don't create
+        duplicate result handling.
+      */
+
+      if (
+        state.quizClosing &&
+        state.quizClosedByVisibility
+      ) {
+
+        return;
+
+      }
+
 
       finishParticipant(
         payload?.final || false
@@ -491,8 +625,12 @@ socket.on(
   "participant:update",
   (participant) => {
 
-    if (!state.participant) {
+    if (
+      !state.participant
+    ) {
+
       return;
+
     }
 
 
@@ -510,7 +648,9 @@ socket.on(
       participant;
 
 
-    if (state.stage === "A") {
+    if (
+      state.stage === "A"
+    ) {
 
       state.score =
         participant.stage_a_score || 0;
@@ -518,7 +658,9 @@ socket.on(
     }
 
 
-    if (state.stage === "B") {
+    if (
+      state.stage === "B"
+    ) {
 
       state.score =
         participant.stage_b_score || 0;
@@ -546,10 +688,14 @@ async function startStage(
   durationSeconds
 ) {
 
-  clearInterval(state.timer);
+  clearInterval(
+    state.timer
+  );
 
 
-  state.stage = stage;
+  state.stage =
+    stage;
+
 
   state.questionIndex = 0;
 
@@ -557,19 +703,36 @@ async function startStage(
 
   state.answered = false;
 
+  state.quizClosing = false;
+
+  state.quizClosedByVisibility =
+    false;
+
+  state.visibilityProcessing =
+    false;
+
 
   state.score =
     stage === "A"
-      ? (state.participant.stage_a_score || 0)
-      : (state.participant.stage_b_score || 0);
+      ? (
+          state.participant
+            .stage_a_score || 0
+        )
+      : (
+          state.participant
+            .stage_b_score || 0
+        );
 
 
   state.timeLeft =
-    Number(durationSeconds || (
-      stage === "A"
-        ? 300
-        : 600
-    ));
+    Number(
+      durationSeconds ||
+      (
+        stage === "A"
+          ? 300
+          : 600
+      )
+    );
 
 
   $("quiz-team").textContent =
@@ -600,7 +763,8 @@ async function startStage(
     "feedback hidden";
 
 
-  $("feedback").innerHTML = "";
+  $("feedback").innerHTML =
+    "";
 
 
   $("next-question").classList.add(
@@ -617,6 +781,7 @@ async function startStage(
 
 
   await loadQuestion();
+
 
   startTimer();
 
@@ -637,17 +802,22 @@ async function loadQuestion() {
   const submitButton =
     $("submit-answer");
 
+
   const nextButton =
     $("next-question");
+
 
   const feedback =
     $("feedback");
 
 
-  submitButton.disabled = true;
+  submitButton.disabled =
+    true;
+
 
   submitButton.textContent =
     "SUBMIT ANSWER";
+
 
   submitButton.classList.remove(
     "hidden"
@@ -658,7 +828,10 @@ async function loadQuestion() {
     "hidden"
   );
 
-  nextButton.disabled = true;
+
+  nextButton.disabled =
+    true;
+
 
   nextButton.textContent =
     "NEXT QUESTION →";
@@ -667,7 +840,9 @@ async function loadQuestion() {
   feedback.className =
     "feedback hidden";
 
-  feedback.innerHTML = "";
+
+  feedback.innerHTML =
+    "";
 
 
   try {
@@ -681,7 +856,9 @@ async function loadQuestion() {
 
 
     const data =
-      await readResponse(response);
+      await readResponse(
+        response
+      );
 
 
     if (!response.ok) {
@@ -700,19 +877,32 @@ async function loadQuestion() {
     );
 
 
-    state.quiz = data;
+    state.quiz =
+      data;
 
+
+    /*
+      Stage A = 20
+      Stage B = 25
+
+      If backend sends total,
+      use backend value.
+    */
 
     const total =
       data.total ??
       data.totalQuestions ??
-      state.stage === "A"
-        ? 20
-        : 25;
+      (
+        state.stage === "A"
+          ? 20
+          : 25
+      );
 
 
     $("question-number").textContent =
-      `Question ${state.questionIndex + 1} / ${total}`;
+      `Question ${
+        state.questionIndex + 1
+      } / ${total}`;
 
 
     $("question-marks").textContent =
@@ -728,7 +918,6 @@ async function loadQuestion() {
     );
 
 
-    // Scroll to question
     window.scrollTo({
       top: 0,
       behavior: "smooth"
@@ -742,7 +931,10 @@ async function loadQuestion() {
       error
     );
 
-    toast(error.message);
+
+    toast(
+      error.message
+    );
 
   }
 
@@ -753,20 +945,25 @@ async function loadQuestion() {
    RENDER OPTIONS
 ========================================================= */
 
-function renderOptions(options) {
+function renderOptions(
+  options
+) {
 
   const container =
     $("options");
 
 
-  container.innerHTML = "";
+  container.innerHTML =
+    "";
 
 
   options.forEach(
     (option, index) => {
 
       const label =
-        document.createElement("label");
+        document.createElement(
+          "label"
+        );
 
 
       label.className =
@@ -781,7 +978,9 @@ function renderOptions(options) {
         >
 
         <span class="letter">
-          ${String.fromCharCode(65 + index)}
+          ${String.fromCharCode(
+            65 + index
+          )}
         </span>
 
         <span class="option-text">
@@ -794,8 +993,13 @@ function renderOptions(options) {
         "click",
         () => {
 
-          if (state.answered) {
+          if (
+            state.answered ||
+            state.quizClosing
+          ) {
+
             return;
+
           }
 
 
@@ -804,7 +1008,9 @@ function renderOptions(options) {
 
 
           document
-            .querySelectorAll(".option")
+            .querySelectorAll(
+              ".option"
+            )
             .forEach(
               (item) => {
 
@@ -828,7 +1034,10 @@ function renderOptions(options) {
 
 
           if (radio) {
-            radio.checked = true;
+
+            radio.checked =
+              true;
+
           }
 
 
@@ -853,205 +1062,215 @@ function renderOptions(options) {
    SUBMIT ANSWER
 ========================================================= */
 
-$("submit-answer").onclick =
-  async () => {
+if ($("submit-answer")) {
 
-    if (
-      state.selected === null ||
-      state.answered
-    ) {
+  $("submit-answer").onclick =
+    async () => {
 
-      return;
+      if (
+        state.selected === null ||
+        state.answered ||
+        state.quizClosing
+      ) {
 
-    }
-
-
-    const submitButton =
-      $("submit-answer");
-
-
-    submitButton.disabled =
-      true;
-
-
-    submitButton.textContent =
-      "SUBMITTING...";
-
-
-    try {
-
-      /*
-        IMPORTANT:
-
-        optionMap converts the displayed
-        randomized position back to
-        original A/B/C/D answer.
-      */
-
-      const originalAnswer =
-        state.quiz?.optionMap?.[
-          state.selected
-        ];
-
-
-      /*
-        Fallback for old backend
-      */
-
-      const selectedOption =
-        originalAnswer ??
-        String.fromCharCode(
-          65 + state.selected
-        );
-
-
-      console.log(
-        "Submitting:",
-        {
-          questionIndex:
-            state.questionIndex,
-
-          displayedIndex:
-            state.selected,
-
-          selectedOption
-        }
-      );
-
-
-      const response =
-        await fetch(
-          API + "/api/quiz/answer",
-          {
-            method: "POST",
-
-            headers: {
-              "Content-Type":
-                "application/json"
-            },
-
-            body: JSON.stringify({
-
-              participantId:
-                state.participant.id,
-
-              stage:
-                state.stage,
-
-              questionIndex:
-                state.questionIndex,
-
-              selectedOption:
-                selectedOption
-
-            })
-          }
-        );
-
-
-      const data =
-        await readResponse(response);
-
-
-      if (!response.ok) {
-
-        throw new Error(
-          data.error ||
-          "Answer submission failed"
-        );
+        return;
 
       }
 
 
-      /*
-        ANSWER SUCCESS
-      */
-
-      state.answered = true;
+      const submitButton =
+        $("submit-answer");
 
 
-      state.score =
-        Number(
-          data.score ??
-          state.score
-        );
+      submitButton.disabled =
+        true;
 
 
-      state.position =
-        data.position ??
-        state.position;
+      submitButton.textContent =
+        "SUBMITTING...";
 
 
-      $("quiz-score").textContent =
-        state.score;
+      try {
+
+        /*
+          Randomized option position
+          -> original A/B/C/D answer
+        */
+
+        const originalAnswer =
+          state.quiz?.optionMap?.[
+            state.selected
+          ];
 
 
-      $("quiz-position").textContent =
-        ordinal(state.position);
+        /*
+          Fallback for old backend
+        */
+
+        const selectedOption =
+          originalAnswer ??
+          String.fromCharCode(
+            65 + state.selected
+          );
 
 
-      /*
-        Disable options
-      */
+        console.log(
+          "Submitting:",
+          {
+            questionIndex:
+              state.questionIndex,
 
-      document
-        .querySelectorAll(".option")
-        .forEach(
-          (option) => {
+            displayedIndex:
+              state.selected,
 
-            option.classList.add(
-              "disabled"
-            );
-
-            option.style.pointerEvents =
-              "none";
-
+            selectedOption
           }
         );
 
 
-      /*
-        Show feedback
-      */
+        const response =
+          await fetch(
+            API +
+            "/api/quiz/answer",
+            {
+              method: "POST",
 
-      showFeedback(data);
+              headers: {
+                "Content-Type":
+                  "application/json"
+              },
+
+              body: JSON.stringify({
+
+                participantId:
+                  state.participant.id,
+
+                stage:
+                  state.stage,
+
+                questionIndex:
+                  state.questionIndex,
+
+                selectedOption:
+                  selectedOption
+
+              })
+            }
+          );
 
 
-    } catch (error) {
-
-      console.error(
-        "Answer submission error:",
-        error
-      );
+        const data =
+          await readResponse(
+            response
+          );
 
 
-      submitButton.disabled =
-        false;
+        if (!response.ok) {
+
+          throw new Error(
+            data.error ||
+            "Answer submission failed"
+          );
+
+        }
 
 
-      submitButton.textContent =
-        "SUBMIT ANSWER";
+        state.answered =
+          true;
 
 
-      toast(error.message);
+        state.score =
+          Number(
+            data.score ??
+            state.score
+          );
 
-    }
 
-  };
+        state.position =
+          data.position ??
+          state.position;
+
+
+        $("quiz-score").textContent =
+          state.score;
+
+
+        $("quiz-position").textContent =
+          ordinal(
+            state.position
+          );
+
+
+        /*
+          Disable all options
+        */
+
+        document
+          .querySelectorAll(
+            ".option"
+          )
+          .forEach(
+            (option) => {
+
+              option.classList.add(
+                "disabled"
+              );
+
+              option.style.pointerEvents =
+                "none";
+
+            }
+          );
+
+
+        showFeedback(
+          data
+        );
+
+
+      } catch (error) {
+
+        console.error(
+          "Answer submission error:",
+          error
+        );
+
+
+        submitButton.disabled =
+          false;
+
+
+        submitButton.textContent =
+          "SUBMIT ANSWER";
+
+
+        toast(
+          error.message
+        );
+
+      }
+
+    };
+
+}
 
 
 /* =========================================================
    SHOW FEEDBACK
 ========================================================= */
 
-function showFeedback(data) {
+function showFeedback(
+  data
+) {
 
   const feedback =
     $("feedback");
 
 
   const correct =
-    Boolean(data.correct);
+    Boolean(
+      data.correct
+    );
 
 
   const marks =
@@ -1081,11 +1300,14 @@ function showFeedback(data) {
 
 
     feedback.innerHTML = `
-      <b>✓ CORRECT · +${marks} marks</b>
+      <b>
+        ✓ CORRECT · +${marks} marks
+      </b>
 
       <small>
         Current score: ${score}
-        · Current position: ${ordinal(position)}
+        · Current position:
+        ${ordinal(position)}
       </small>
     `;
 
@@ -1101,34 +1323,31 @@ function showFeedback(data) {
 
 
     feedback.innerHTML = `
-      <b>✕ WRONG · +0 marks</b>
+      <b>
+        ✕ WRONG · +0 marks
+      </b>
 
       <div>
         Correct answer:
-        <strong>${esc(answer)}</strong>
+        <strong>
+          ${esc(answer)}
+        </strong>
       </div>
 
       <small>
         Current score: ${score}
-        · Current position: ${ordinal(position)}
+        · Current position:
+        ${ordinal(position)}
       </small>
     `;
 
   }
 
 
-  /*
-    Hide submit button
-  */
-
   $("submit-answer").classList.add(
     "hidden"
   );
 
-
-  /*
-    SHOW NEXT BUTTON
-  */
 
   const nextButton =
     $("next-question");
@@ -1137,7 +1356,11 @@ function showFeedback(data) {
   const total =
     state.quiz?.total ??
     state.quiz?.totalQuestions ??
-    (state.stage === "A" ? 20 : 25);
+    (
+      state.stage === "A"
+        ? 20
+        : 25
+    );
 
 
   if (
@@ -1165,18 +1388,17 @@ function showFeedback(data) {
   );
 
 
-  /*
-    Make sure user can see it
-  */
+  setTimeout(
+    () => {
 
-  setTimeout(() => {
+      nextButton.scrollIntoView({
+        behavior: "smooth",
+        block: "center"
+      });
 
-    nextButton.scrollIntoView({
-      behavior: "smooth",
-      block: "center"
-    });
-
-  }, 150);
+    },
+    150
+  );
 
 }
 
@@ -1185,76 +1407,90 @@ function showFeedback(data) {
    NEXT QUESTION
 ========================================================= */
 
-$("next-question").onclick =
-  async () => {
+if ($("next-question")) {
 
-    if (!state.answered) {
-      return;
-    }
+  $("next-question").onclick =
+    async () => {
 
+      if (
+        !state.answered ||
+        state.quizClosing
+      ) {
 
-    const nextButton =
-      $("next-question");
+        return;
 
-
-    const total =
-      state.quiz?.total ??
-      state.quiz?.totalQuestions ??
-      (state.stage === "A" ? 20 : 25);
+      }
 
 
-    /*
-      LAST QUESTION
-    */
+      const nextButton =
+        $("next-question");
 
-    if (
-      state.questionIndex >=
-      total - 1
-    ) {
+
+      const total =
+        state.quiz?.total ??
+        state.quiz?.totalQuestions ??
+        (
+          state.stage === "A"
+            ? 20
+            : 25
+        );
+
+
+      /*
+        LAST QUESTION
+      */
+
+      if (
+        state.questionIndex >=
+        total - 1
+      ) {
+
+        nextButton.disabled =
+          true;
+
+
+        nextButton.textContent =
+          "FINISHING...";
+
+
+        await finishQuiz();
+
+
+        return;
+
+      }
+
+
+      /*
+        NEXT QUESTION
+      */
 
       nextButton.disabled =
         true;
 
+
       nextButton.textContent =
-        "FINISHING...";
+        "LOADING...";
 
 
-      await finishQuiz();
+      state.questionIndex++;
+
+      state.selected = null;
+
+      state.answered = false;
 
 
-      return;
-
-    }
+      await loadQuestion();
 
 
-    /*
-      NEXT QUESTION
-    */
+      window.scrollTo({
+        top: 0,
+        behavior: "smooth"
+      });
 
-    nextButton.disabled =
-      true;
+    };
 
-
-    nextButton.textContent =
-      "LOADING...";
-
-
-    state.questionIndex++;
-
-    state.selected = null;
-
-    state.answered = false;
-
-
-    await loadQuestion();
-
-
-    window.scrollTo({
-      top: 0,
-      behavior: "smooth"
-    });
-
-  };
+}
 
 
 /* =========================================================
@@ -1263,14 +1499,34 @@ $("next-question").onclick =
 
 async function finishQuiz() {
 
-  clearInterval(state.timer);
+  /*
+    Prevent duplicate finish
+  */
+
+  if (
+    state.quizClosing
+  ) {
+
+    return;
+
+  }
+
+
+  state.quizClosing =
+    true;
+
+
+  clearInterval(
+    state.timer
+  );
 
 
   try {
 
     const response =
       await fetch(
-        API + "/api/quiz/finish",
+        API +
+        "/api/quiz/finish",
         {
           method: "POST",
 
@@ -1293,7 +1549,9 @@ async function finishQuiz() {
 
 
     const data =
-      await readResponse(response);
+      await readResponse(
+        response
+      );
 
 
     if (!response.ok) {
@@ -1316,7 +1574,9 @@ async function finishQuiz() {
   }
 
 
-  await finishParticipant(false);
+  await finishParticipant(
+    false
+  );
 
 }
 
@@ -1327,7 +1587,9 @@ async function finishQuiz() {
 
 function startTimer() {
 
-  clearInterval(state.timer);
+  clearInterval(
+    state.timer
+  );
 
 
   renderTimer();
@@ -1336,6 +1598,19 @@ function startTimer() {
   state.timer =
     setInterval(
       () => {
+
+        if (
+          state.quizClosing
+        ) {
+
+          clearInterval(
+            state.timer
+          );
+
+          return;
+
+        }
+
 
         state.timeLeft--;
 
@@ -1383,7 +1658,13 @@ function renderTimer() {
 
 
   timer.textContent =
-    `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+    `${String(minutes).padStart(
+      2,
+      "0"
+    )}:${String(seconds).padStart(
+      2,
+      "0"
+    )}`;
 
 
   timer.classList.toggle(
@@ -1402,13 +1683,31 @@ function renderTimer() {
 
 
 /* =========================================================
-   AUTO FINISH
+   AUTO FINISH — TIME UP
 ========================================================= */
 
 async function autoFinish() {
 
+  if (
+    state.quizClosing
+  ) {
+
+    return;
+
+  }
+
+
+  state.quizClosing =
+    true;
+
+
   toast(
     "Time up! Quiz is being submitted..."
+  );
+
+
+  clearInterval(
+    state.timer
   );
 
 
@@ -1416,7 +1715,8 @@ async function autoFinish() {
 
     const response =
       await fetch(
-        API + "/api/quiz/finish",
+        API +
+        "/api/quiz/finish",
         {
           method: "POST",
 
@@ -1438,7 +1738,10 @@ async function autoFinish() {
       );
 
 
-    await readResponse(response);
+    await readResponse(
+      response
+    );
+
 
   } catch (error) {
 
@@ -1450,9 +1753,299 @@ async function autoFinish() {
   }
 
 
-  await finishParticipant(false);
+  await finishParticipant(
+    false
+  );
 
 }
+
+
+/* =========================================================
+   TAB / WINDOW LEAVE PROTECTION
+========================================================= */
+
+/*
+  IMPORTANT:
+
+  visibilitychange is the main detection method.
+
+  If participant:
+  - switches to another tab
+  - opens another tab
+  - minimizes browser
+  - moves away from the quiz page
+
+  the browser normally changes visibility
+  to "hidden".
+
+  We then finish the active quiz.
+*/
+
+
+document.addEventListener(
+  "visibilitychange",
+  async () => {
+
+    /*
+      Only handle when page becomes hidden.
+    */
+
+    if (
+      document.visibilityState !==
+      "hidden"
+    ) {
+
+      return;
+
+    }
+
+
+    /*
+      Must be an active participant quiz.
+    */
+
+    if (
+      !state.participant ||
+      !state.stage
+    ) {
+
+      return;
+
+    }
+
+
+    const quizScreen =
+      $("screen-quiz");
+
+
+    if (
+      !quizScreen ||
+      !quizScreen.classList.contains(
+        "active"
+      )
+    ) {
+
+      return;
+
+    }
+
+
+    /*
+      Prevent duplicate processing.
+    */
+
+    if (
+      state.quizClosing ||
+      state.visibilityProcessing
+    ) {
+
+      return;
+
+    }
+
+
+    state.visibilityProcessing =
+      true;
+
+
+    state.quizClosing =
+      true;
+
+
+    state.quizClosedByVisibility =
+      true;
+
+
+    console.warn(
+      "Participant left quiz page. Auto-finishing quiz."
+    );
+
+
+    /*
+      Stop timer immediately.
+    */
+
+    clearInterval(
+      state.timer
+    );
+
+
+    /*
+      Disable quiz controls.
+    */
+
+    if (
+      $("submit-answer")
+    ) {
+
+      $("submit-answer").disabled =
+        true;
+
+    }
+
+
+    if (
+      $("next-question")
+    ) {
+
+      $("next-question").disabled =
+        true;
+
+    }
+
+
+    /*
+      Disable option clicks.
+    */
+
+    document
+      .querySelectorAll(
+        ".option"
+      )
+      .forEach(
+        (option) => {
+
+          option.classList.add(
+            "disabled"
+          );
+
+          option.style.pointerEvents =
+            "none";
+
+        }
+      );
+
+
+    /*
+      Finish on server.
+
+      keepalive is important because
+      the page is becoming hidden.
+    */
+
+    try {
+
+      const response =
+        await fetch(
+          API +
+          "/api/quiz/finish",
+          {
+            method: "POST",
+
+            headers: {
+              "Content-Type":
+                "application/json"
+            },
+
+            body: JSON.stringify({
+
+              participantId:
+                state.participant.id,
+
+              stage:
+                state.stage
+
+            }),
+
+            keepalive: true
+          }
+        );
+
+
+      console.log(
+        "Visibility finish status:",
+        response.status
+      );
+
+
+    } catch (error) {
+
+      /*
+        Browser may cancel normal async
+        requests during page hide.
+      */
+
+      console.warn(
+        "Visibility finish request:",
+        error
+      );
+
+    }
+
+  }
+);
+
+
+/* =========================================================
+   RETURN AFTER LEAVING QUIZ
+========================================================= */
+
+document.addEventListener(
+  "visibilitychange",
+  async () => {
+
+    /*
+      Only execute when page becomes visible.
+    */
+
+    if (
+      document.visibilityState !==
+      "visible"
+    ) {
+
+      return;
+
+    }
+
+
+    /*
+      Nothing happened previously.
+    */
+
+    if (
+      !state.quizClosedByVisibility
+    ) {
+
+      return;
+
+    }
+
+
+    console.log(
+      "Participant returned after leaving quiz."
+    );
+
+
+    state.quizClosedByVisibility =
+      false;
+
+
+    state.visibilityProcessing =
+      false;
+
+
+    clearInterval(
+      state.timer
+    );
+
+
+    /*
+      Show result.
+    */
+
+    if (
+      state.participant &&
+      state.stage
+    ) {
+
+      await finishParticipant(
+        false
+      );
+
+    }
+
+  }
+);
 
 
 /* =========================================================
@@ -1463,19 +2056,25 @@ async function finishParticipant(
   final
 ) {
 
-  clearInterval(state.timer);
+  clearInterval(
+    state.timer
+  );
 
 
   try {
 
     const response =
       await fetch(
-        `${API}/api/participant/${state.participant.id}/summary`
+        `${API}/api/participant/${encodeURIComponent(
+          state.participant.id
+        )}/summary`
       );
 
 
     const data =
-      await readResponse(response);
+      await readResponse(
+        response
+      );
 
 
     if (!response.ok) {
@@ -1507,10 +2106,24 @@ async function finishParticipant(
 
 
     $("result-position").textContent =
-      ordinal(summary.position);
+      ordinal(
+        summary.position
+      );
 
 
-    if (final) {
+    /*
+      Special message when participant
+      left the quiz page.
+    */
+
+    if (
+      state.quizClosedByVisibility
+    ) {
+
+      $("result-note").textContent =
+        "Quiz ended because you left the quiz window.";
+
+    } else if (final) {
 
       $("result-note").textContent =
         "Event completed.";
@@ -1546,7 +2159,9 @@ async function finishParticipant(
 
 
     $("result-note").textContent =
-      "Your quiz has been submitted.";
+      state.quizClosedByVisibility
+        ? "Quiz ended because you left the quiz window."
+        : "Your quiz has been submitted.";
 
 
     show("result");
@@ -1574,7 +2189,9 @@ if ($("coord-form")) {
 
 
       const code =
-        $("coord-code").value.trim();
+        $("coord-code")
+          .value
+          .trim();
 
 
       try {
@@ -1599,7 +2216,9 @@ if ($("coord-form")) {
 
 
         const data =
-          await readResponse(response);
+          await readResponse(
+            response
+          );
 
 
         if (!response.ok) {
@@ -1664,9 +2283,12 @@ async function authFetch(
 
 
   options.headers = {
+
     ...(options.headers || {}),
+
     "x-coordinator-token":
       token
+
   };
 
 
@@ -1693,7 +2315,9 @@ async function loadDashboard() {
 
 
     const data =
-      await readResponse(response);
+      await readResponse(
+        response
+      );
 
 
     if (!response.ok) {
@@ -1705,7 +2329,9 @@ async function loadDashboard() {
     }
 
 
-    renderDashboard(data);
+    renderDashboard(
+      data
+    );
 
 
   } catch (error) {
@@ -1714,6 +2340,7 @@ async function loadDashboard() {
       "Dashboard error:",
       error
     );
+
 
     toast(
       "Could not load dashboard"
@@ -1734,7 +2361,9 @@ socket.on(
 
     try {
 
-      renderDashboard(data);
+      renderDashboard(
+        data
+      );
 
     } catch (error) {
 
@@ -1753,7 +2382,9 @@ socket.on(
    RENDER COORDINATOR DASHBOARD
 ========================================================= */
 
-function renderDashboard(data) {
+function renderDashboard(
+  data
+) {
 
   const participants =
     data.participants || [];
@@ -1773,13 +2404,15 @@ function renderDashboard(data) {
 
   $("stat-live").textContent =
     participants.filter(
-      p => p.status === "live"
+      p =>
+        p.status === "live"
     ).length;
 
 
   $("stat-submitted").textContent =
     participants.filter(
-      p => p.status === "submitted"
+      p =>
+        p.status === "submitted"
     ).length;
 
 
@@ -1837,28 +2470,43 @@ function renderDashboard(data) {
 
         const scoreA =
           stage === "B"
-            ? Number(a.stage_b_score || 0)
-            : Number(a.stage_a_score || 0);
+            ? Number(
+                a.stage_b_score || 0
+              )
+            : Number(
+                a.stage_a_score || 0
+              );
 
 
         const scoreB =
           stage === "B"
-            ? Number(b.stage_b_score || 0)
-            : Number(b.stage_a_score || 0);
+            ? Number(
+                b.stage_b_score || 0
+              )
+            : Number(
+                b.stage_a_score || 0
+              );
 
 
         if (
           scoreB !== scoreA
         ) {
 
-          return scoreB - scoreA;
+          return (
+            scoreB -
+            scoreA
+          );
 
         }
 
 
         return (
-          new Date(a.joined_at || 0) -
-          new Date(b.joined_at || 0)
+          new Date(
+            a.joined_at || 0
+          ) -
+          new Date(
+            b.joined_at || 0
+          )
         );
 
       }
@@ -1919,11 +2567,15 @@ function renderDashboard(data) {
             </td>
 
             <td>
-              ${esc(participant.team_name)}
+              ${esc(
+                participant.team_name
+              )}
             </td>
 
             <td>
-              ${esc(participant.college_name)}
+              ${esc(
+                participant.college_name
+              )}
             </td>
 
             <td>
@@ -1935,7 +2587,9 @@ function renderDashboard(data) {
             </td>
 
             <td
-              class="status-${esc(participant.status)}"
+              class="status-${esc(
+                participant.status
+              )}"
             >
               ${esc(
                 String(
@@ -1952,7 +2606,9 @@ function renderDashboard(data) {
 
               <button
                 class="btn danger btn-delete"
-                data-delete-id="${esc(participant.id)}"
+                data-delete-id="${esc(
+                  participant.id
+                )}"
                 type="button"
               >
                 DELETE
@@ -1978,13 +2634,14 @@ function renderDashboard(data) {
     .forEach(
       (button) => {
 
-        button.onclick = () => {
+        button.onclick =
+          () => {
 
-          deleteParticipant(
-            button.dataset.deleteId
-          );
+            deleteParticipant(
+              button.dataset.deleteId
+            );
 
-        };
+          };
 
       }
     );
@@ -2007,7 +2664,9 @@ async function deleteParticipant(
 
 
   if (!confirmed) {
+
     return;
+
   }
 
 
@@ -2015,7 +2674,9 @@ async function deleteParticipant(
 
     const response =
       await authFetch(
-        `/api/coordinator/participant/${encodeURIComponent(id)}`,
+        `/api/coordinator/participant/${encodeURIComponent(
+          id
+        )}`,
         {
           method: "DELETE"
         }
@@ -2023,7 +2684,9 @@ async function deleteParticipant(
 
 
     const data =
-      await readResponse(response);
+      await readResponse(
+        response
+      );
 
 
     if (!response.ok) {
@@ -2065,20 +2728,32 @@ async function deleteParticipant(
    START QUIZ — COORDINATOR
 ========================================================= */
 
-$("start-a").onclick =
-  () => {
+if ($("start-a")) {
 
-    startQuizCoordinator("A");
+  $("start-a").onclick =
+    () => {
 
-  };
+      startQuizCoordinator(
+        "A"
+      );
+
+    };
+
+}
 
 
-$("start-b").onclick =
-  () => {
+if ($("start-b")) {
 
-    startQuizCoordinator("B");
+  $("start-b").onclick =
+    () => {
 
-  };
+      startQuizCoordinator(
+        "B"
+      );
+
+    };
+
+}
 
 
 async function startQuizCoordinator(
@@ -2106,7 +2781,9 @@ async function startQuizCoordinator(
 
 
     const data =
-      await readResponse(response);
+      await readResponse(
+        response
+      );
 
 
     if (!response.ok) {
@@ -2150,152 +2827,173 @@ async function startQuizCoordinator(
    FINISH CURRENT QUIZ — COORDINATOR
 ========================================================= */
 
-$("finish-live").onclick =
-  async () => {
+if ($("finish-live")) {
 
-    const confirmed =
-      confirm(
-        "Finish the current quiz for all participants?"
-      );
+  $("finish-live").onclick =
+    async () => {
 
-
-    if (!confirmed) {
-      return;
-    }
-
-
-    try {
-
-      const response =
-        await authFetch(
-          "/api/coordinator/finish",
-          {
-            method: "POST"
-          }
+      const confirmed =
+        confirm(
+          "Finish the current quiz for all participants?"
         );
 
 
-      const data =
-        await readResponse(response);
+      if (!confirmed) {
 
-
-      if (!response.ok) {
-
-        throw new Error(
-          data.error ||
-          "Could not finish quiz"
-        );
+        return;
 
       }
 
 
-      toast(
-        "Current quiz finished"
-      );
+      try {
+
+        const response =
+          await authFetch(
+            "/api/coordinator/finish",
+            {
+              method: "POST"
+            }
+          );
 
 
-      await loadDashboard();
+        const data =
+          await readResponse(
+            response
+          );
 
 
-    } catch (error) {
+        if (!response.ok) {
 
-      console.error(
-        "Finish current quiz:",
-        error
-      );
+          throw new Error(
+            data.error ||
+            "Could not finish quiz"
+          );
+
+        }
 
 
-      toast(
-        error.message
-      );
+        toast(
+          "Current quiz finished"
+        );
 
-    }
 
-  };
+        await loadDashboard();
+
+
+      } catch (error) {
+
+        console.error(
+          "Finish current quiz:",
+          error
+        );
+
+
+        toast(
+          error.message
+        );
+
+      }
+
+    };
+
+}
 
 
 /* =========================================================
    CSV EXPORT
 ========================================================= */
 
-$("export-csv").onclick =
-  async () => {
+if ($("export-csv")) {
 
-    try {
+  $("export-csv").onclick =
+    async () => {
 
-      const response =
-        await authFetch(
-          "/api/coordinator/export"
+      try {
+
+        const response =
+          await authFetch(
+            "/api/coordinator/export"
+          );
+
+
+        if (!response.ok) {
+
+          const data =
+            await readResponse(
+              response
+            );
+
+
+          throw new Error(
+            data.error ||
+            "Export failed"
+          );
+
+        }
+
+
+        const blob =
+          await response.blob();
+
+
+        const url =
+          URL.createObjectURL(
+            blob
+          );
+
+
+        const link =
+          document.createElement(
+            "a"
+          );
+
+
+        link.href =
+          url;
+
+
+        link.download =
+          "xyfronix-ai-prompt-battle-results.csv";
+
+
+        document.body.appendChild(
+          link
         );
 
 
-      if (!response.ok) {
+        link.click();
 
-        const data =
-          await readResponse(response);
 
-        throw new Error(
-          data.error ||
-          "Export failed"
+        link.remove();
+
+
+        URL.revokeObjectURL(
+          url
+        );
+
+
+        toast(
+          "CSV exported"
+        );
+
+
+      } catch (error) {
+
+        console.error(
+          "CSV error:",
+          error
+        );
+
+
+        toast(
+          error.message
         );
 
       }
 
+    };
 
-      const blob =
-        await response.blob();
-
-
-      const url =
-        URL.createObjectURL(blob);
-
-
-      const link =
-        document.createElement("a");
-
-
-      link.href = url;
-
-      link.download =
-        "xyfronix-ai-prompt-battle-results.csv";
-
-
-      document.body.appendChild(
-        link
-      );
-
-
-      link.click();
-
-
-      link.remove();
-
-
-      URL.revokeObjectURL(
-        url
-      );
-
-
-      toast(
-        "CSV exported"
-      );
-
-
-    } catch (error) {
-
-      console.error(
-        "CSV error:",
-        error
-      );
-
-
-      toast(
-        error.message
-      );
-
-    }
-
-  };
+}
 
 
 /* =========================================================
@@ -2311,7 +3009,9 @@ $("export-csv").onclick =
 
 
   if (!id) {
+
     return;
+
   }
 
 
@@ -2319,7 +3019,9 @@ $("export-csv").onclick =
 
     const response =
       await fetch(
-        `${API}/api/participant/${encodeURIComponent(id)}`
+        `${API}/api/participant/${encodeURIComponent(
+          id
+        )}`
       );
 
 
@@ -2335,7 +3037,9 @@ $("export-csv").onclick =
 
 
     const participant =
-      await readResponse(response);
+      await readResponse(
+        response
+      );
 
 
     state.participant =
@@ -2374,13 +3078,19 @@ $("export-csv").onclick =
    INITIAL CONNECTION STATUS
 ========================================================= */
 
-if (socket.connected) {
+if (
+  socket.connected
+) {
 
-  setConnection(true);
+  setConnection(
+    true
+  );
 
 } else {
 
-  setConnection(false);
+  setConnection(
+    false
+  );
 
 }
 
@@ -2388,6 +3098,7 @@ if (socket.connected) {
 console.log(
   "XYFRONIX '26 AI Prompt Battle loaded."
 );
+
 
 console.log(
   "Backend API:",
