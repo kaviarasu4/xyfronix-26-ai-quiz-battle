@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: xyfronix-26-ai-prompt-battle
+    runtime: node
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_VERSION
+        value: 22
+      - key: COORDINATOR_CODE
+        sync: false
+      - key: SUPABASE_URL
+        value: https://rcyxppynhdbwskevrjyl.supabase.co
+      - key: SUPABASE_SECRET_KEY
+        sync: false
