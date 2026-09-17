@@ -19,14 +19,20 @@ app.use(express.static(require("path").join(__dirname, "public")));
 const PORT = Number(process.env.PORT || 4000);
 const COORDINATOR_CODE = process.env.COORDINATOR_CODE || "XYF26";
 const SUPABASE_URL = process.env.SUPABASE_URL;
-const SUPABASE_KEY = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
+const SUPABASE_KEY =
+  process.env.SUPABASE_SECRET_KEY ||
+  process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 if(!SUPABASE_URL || !SUPABASE_KEY){
-  console.warn("WARNING: Supabase env vars are missing. The server will run, but database persistence will fail.");
+  console.warn(
+    "WARNING: Supabase env vars are missing. The server will run, but database persistence will fail."
+  );
 }
 
 const supabase = (SUPABASE_URL && SUPABASE_KEY)
-  ? createClient(SUPABASE_URL, SUPABASE_KEY, {auth:{persistSession:false}})
+  ? createClient(SUPABASE_URL, SUPABASE_KEY, {
+      auth: { persistSession: false }
+    })
   : null;
 
 const QUIZZES = {
@@ -57,6 +63,7 @@ const QUIZZES = {
       {q:"What is the main purpose of prompt engineering?",o:["Designing instructions that help AI produce useful, controlled outputs","Building computer hardware","Increasing internet bandwidth","Creating passwords"],a:0}
     ]
   },
+
   B: {
     title: "AI Scenario Challenge",
     duration: 10 * 60,
@@ -91,24 +98,37 @@ const QUIZZES = {
   }
 };
 
-let memory = {participants:new Map(), quiz:{activeStage:null,status:"waiting"}};
+let memory = {
+  participants: new Map(),
+  quiz: {activeStage:null,status:"waiting"}
+};
 
-function stageQuestions(stage){return QUIZZES[stage].questions;}
-function sanitizeParticipant(p){return p;}
+function stageQuestions(stage){
+  return QUIZZES[stage].questions;
+}
+
+function sanitizeParticipant(p){
+  return p;
+}
 
 async function dbInsertParticipant(p){
   if(!supabase) return;
   const {error}=await supabase.from("participants").insert(p);
   if(error) console.error(error);
 }
+
 async function dbUpdateParticipant(id, patch){
   if(!supabase) return;
   const {error}=await supabase.from("participants").update(patch).eq("id",id);
   if(error) console.error(error);
 }
+
 async function dbInsertAnswer(row){
   if(!supabase) return;
-  const {error}=await supabase.from("answers").upsert(row,{onConflict:"participant_id,stage,question_index"});
+  const {error}=await supabase.from("answers").upsert(
+    row,
+    {onConflict:"participant_id,stage,question_index"}
+  );
   if(error) console.error(error);
 }
 
@@ -118,7 +138,10 @@ function dashboardState(){
     participants: [...memory.participants.values()].map(sanitizeParticipant)
   };
 }
-function broadcastDashboard(){ io.to("coordinators").emit("dashboard:update",dashboardState()); }
+
+function broadcastDashboard(){
+  io.to("coordinators").emit("dashboard:update",dashboardState());
+}
 
 async function rankFor(stage){
   const rows=[...memory.participants.values()].sort((a,b)=>{
@@ -132,190 +155,494 @@ async function rankFor(stage){
 function publicQuestion(stage,index){
   const q=stageQuestions(stage)[index];
   if(!q) return null;
-  return {index,total:stageQuestions(stage).length,question:q.q,options:q.o,marks:QUIZZES[stage].marks};
+
+  return {
+    index,
+    total:stageQuestions(stage).length,
+    question:q.q,
+    options:q.o,
+    marks:QUIZZES[stage].marks
+  };
 }
 
-app.get("/api/health",(req,res)=>res.json({ok:true,service:"XYFRONIX '26 AI Prompt Battle"}));
+app.get("/api/health",(req,res)=>{
+  res.json({
+    ok:true,
+    service:"XYFRONIX '26 AI Prompt Battle"
+  });
+});
 
 app.post("/api/participant/join",async(req,res)=>{
   const teamName=String(req.body.teamName||"").trim();
   const collegeName=String(req.body.collegeName||"").trim();
-  if(!teamName||!collegeName) return res.status(400).json({error:"Team name and college name are required."});
-  if(memory.quiz.status==="running") return res.status(409).json({error:"A quiz is already running. Please wait for the next session."});
+
+  if(!teamName||!collegeName)
+    return res.status(400).json({
+      error:"Team name and college name are required."
+    });
+
+  if(memory.quiz.status==="running")
+    return res.status(409).json({
+      error:"A quiz is already running. Please wait for the next session."
+    });
 
   const id=crypto.randomUUID();
+
   const participant={
-    id,team_name:teamName,college_name:collegeName,status:"waiting",
-    stage_a_score:0,stage_a_correct:0,stage_a_used:0,
-    stage_b_score:0,stage_b_correct:0,stage_b_used:0,
-    joined_at:new Date().toISOString(),completed_at:null
+    id,
+    team_name:teamName,
+    college_name:collegeName,
+    status:"waiting",
+    stage_a_score:0,
+    stage_a_correct:0,
+    stage_a_used:0,
+    stage_b_score:0,
+    stage_b_correct:0,
+    stage_b_used:0,
+    joined_at:new Date().toISOString(),
+    completed_at:null
   };
+
   memory.participants.set(id,participant);
   await dbInsertParticipant(participant);
   broadcastDashboard();
+
   res.json({participant});
 });
 
 app.get("/api/participant/:id",async(req,res)=>{
   const p=memory.participants.get(req.params.id);
-  if(!p) return res.status(404).json({error:"Participant not found"});
+
+  if(!p)
+    return res.status(404).json({
+      error:"Participant not found"
+    });
+
   res.json(p);
 });
 
 app.get("/api/quiz/:stage/question/:index",(req,res)=>{
   const stage=String(req.params.stage).toUpperCase();
   const index=Number(req.params.index);
-  if(!QUIZZES[stage] || !Number.isInteger(index) || index<0 || index>=stageQuestions(stage).length)
-    return res.status(404).json({error:"Question not found"});
+
+  if(
+    !QUIZZES[stage] ||
+    !Number.isInteger(index) ||
+    index<0 ||
+    index>=stageQuestions(stage).length
+  )
+    return res.status(404).json({
+      error:"Question not found"
+    });
+
   res.json(publicQuestion(stage,index));
 });
 
 app.post("/api/quiz/answer",async(req,res)=>{
-  const {participantId,stage,questionIndex,selectedOption}=req.body;
+  const {
+    participantId,
+    stage,
+    questionIndex,
+    selectedOption
+  }=req.body;
+
   const p=memory.participants.get(participantId);
-  if(!p) return res.status(404).json({error:"Participant not found"});
-  if(memory.quiz.status!=="running" || memory.quiz.activeStage!==stage)
-    return res.status(409).json({error:"This quiz is not currently running."});
 
-  const idx=Number(questionIndex), selected=Number(selectedOption);
+  if(!p)
+    return res.status(404).json({
+      error:"Participant not found"
+    });
+
+  if(
+    memory.quiz.status!=="running" ||
+    memory.quiz.activeStage!==stage
+  )
+    return res.status(409).json({
+      error:"This quiz is not currently running."
+    });
+
+  const idx=Number(questionIndex);
+  const selected=Number(selectedOption);
   const q=stageQuestions(stage)[idx];
-  if(!q || !Number.isInteger(selected) || selected<0 || selected>=q.o.length)
-    return res.status(400).json({error:"Invalid question or option."});
 
-  const usedField=stage==="A"?"stage_a_used":"stage_b_used";
-  const scoreField=stage==="A"?"stage_a_score":"stage_b_score";
-  const correctField=stage==="A"?"stage_a_correct":"stage_b_correct";
+  if(
+    !q ||
+    !Number.isInteger(selected) ||
+    selected<0 ||
+    selected>=q.o.length
+  )
+    return res.status(400).json({
+      error:"Invalid question or option."
+    });
 
-  // Prevent duplicate submissions for the same question.
+  const usedField=stage==="A"
+    ?"stage_a_used"
+    :"stage_b_used";
+
+  const scoreField=stage==="A"
+    ?"stage_a_score"
+    :"stage_b_score";
+
+  const correctField=stage==="A"
+    ?"stage_a_correct"
+    :"stage_b_correct";
+
   const alreadyKey=`${participantId}:${stage}:${idx}`;
+
   if(memory[stage==="A"?"answersA":"answersB"]?.has(alreadyKey))
-    return res.status(409).json({error:"This question was already submitted."});
+    return res.status(409).json({
+      error:"This question was already submitted."
+    });
+
   memory[stage==="A"?"answersA":"answersB"] ||= new Set();
   memory[stage==="A"?"answersA":"answersB"].add(alreadyKey);
 
   const correct=selected===q.a;
   const marksAwarded=correct?QUIZZES[stage].marks:0;
-  p[usedField]+=1; p[scoreField]+=marksAwarded; if(correct)p[correctField]+=1;
+
+  p[usedField]+=1;
+  p[scoreField]+=marksAwarded;
+
+  if(correct)
+    p[correctField]+=1;
+
   p.status="live";
-  await dbUpdateParticipant(p.id,{[usedField]:p[usedField],[scoreField]:p[scoreField],[correctField]:p[correctField],status:"live"});
+
+  await dbUpdateParticipant(
+    p.id,
+    {
+      [usedField]:p[usedField],
+      [scoreField]:p[scoreField],
+      [correctField]:p[correctField],
+      status:"live"
+    }
+  );
+
   await dbInsertAnswer({
-    participant_id:p.id,stage,question_index:idx,selected_option:selected,
-    is_correct:correct,marks:marksAwarded,submitted_at:new Date().toISOString()
+    participant_id:p.id,
+    stage,
+    question_index:idx,
+    selected_option:selected,
+    is_correct:correct,
+    marks:marksAwarded,
+    submitted_at:new Date().toISOString()
   });
 
   const rows=await rankFor(stage);
   const position=rows.findIndex(x=>x.id===p.id)+1;
+
   io.to(`participant:${p.id}`).emit("participant:update",p);
   broadcastDashboard();
 
-  res.json({correct,marksAwarded,correctAnswer:q.o[q.a],score:p[scoreField],position});
+  res.json({
+    correct,
+    marksAwarded,
+    correctAnswer:q.o[q.a],
+    score:p[scoreField],
+    position
+  });
 });
 
 app.post("/api/quiz/finish",async(req,res)=>{
   const {participantId,stage}=req.body;
   const p=memory.participants.get(participantId);
-  if(!p) return res.status(404).json({error:"Participant not found"});
-  p.status = stage === "A" ? "waiting" : "submitted";
-  p.completed_at = stage === "B" ? new Date().toISOString() : null;
-  await dbUpdateParticipant(p.id,{status:p.status,completed_at:p.completed_at});
+
+  if(!p)
+    return res.status(404).json({
+      error:"Participant not found"
+    });
+
+  p.status=stage==="A"?"waiting":"submitted";
+  p.completed_at=stage==="B"
+    ?new Date().toISOString()
+    :null;
+
+  await dbUpdateParticipant(
+    p.id,
+    {
+      status:p.status,
+      completed_at:p.completed_at
+    }
+  );
+
   broadcastDashboard();
+
   res.json({ok:true});
 });
 
 app.get("/api/participant/:id/summary",async(req,res)=>{
   const p=memory.participants.get(req.params.id);
-  if(!p) return res.status(404).json({error:"Participant not found"});
-  const rowsA=await rankFor("A"), rowsB=await rankFor("B");
+
+  if(!p)
+    return res.status(404).json({
+      error:"Participant not found"
+    });
+
+  const rowsA=await rankFor("A");
+  const rowsB=await rankFor("B");
+
   res.json({
     team:p.team_name,
-    stageA:{score:p.stage_a_score,correct:p.stage_a_correct,position:rowsA.findIndex(x=>x.id===p.id)+1},
-    stageB:{score:p.stage_b_score,correct:p.stage_b_correct,position:rowsB.findIndex(x=>x.id===p.id)+1}
+    stageA:{
+      score:p.stage_a_score,
+      correct:p.stage_a_correct,
+      position:rowsA.findIndex(x=>x.id===p.id)+1
+    },
+    stageB:{
+      score:p.stage_b_score,
+      correct:p.stage_b_correct,
+      position:rowsB.findIndex(x=>x.id===p.id)+1
+    }
   });
 });
 
 function coordinatorAuth(req,res,next){
   const token=req.headers["x-coordinator-token"];
-  if(!token || !coordinatorTokens.has(token)) return res.status(401).json({error:"Coordinator login required."});
+
+  if(!token || !coordinatorTokens.has(token))
+    return res.status(401).json({
+      error:"Coordinator login required."
+    });
+
   next();
 }
+
 const coordinatorTokens=new Set();
 
 app.post("/api/coordinator/login",(req,res)=>{
-  if(String(req.body.code||"")!==COORDINATOR_CODE) return res.status(401).json({error:"Invalid coordinator code."});
+  if(String(req.body.code||"")!==COORDINATOR_CODE)
+    return res.status(401).json({
+      error:"Invalid coordinator code."
+    });
+
   const token=crypto.randomBytes(24).toString("hex");
   coordinatorTokens.add(token);
+
   res.json({token});
 });
 
-app.get("/api/coordinator/state",coordinatorAuth,(req,res)=>res.json(dashboardState()));
+app.get(
+  "/api/coordinator/state",
+  coordinatorAuth,
+  (req,res)=>res.json(dashboardState())
+);
 
 app.post("/api/coordinator/start",coordinatorAuth,async(req,res)=>{
   const stage=String(req.body.stage||"").toUpperCase();
-  if(!QUIZZES[stage]) return res.status(400).json({error:"Invalid quiz stage."});
-  const ids=[...memory.participants.values()].filter(p=>p.status!=="submitted").map(p=>p.id);
-  if(!ids.length) return res.status(400).json({error:"No waiting participants found."});
 
-  memory.quiz={activeStage:stage,status:"running",startedAt:new Date().toISOString(),durationSeconds:QUIZZES[stage].duration};
+  if(!QUIZZES[stage])
+    return res.status(400).json({
+      error:"Invalid quiz stage."
+    });
+
+  const ids=[...memory.participants.values()]
+    .filter(p=>p.status!=="submitted")
+    .map(p=>p.id);
+
+  if(!ids.length)
+    return res.status(400).json({
+      error:"No waiting participants found."
+    });
+
+  memory.quiz={
+    activeStage:stage,
+    status:"running",
+    startedAt:new Date().toISOString(),
+    durationSeconds:QUIZZES[stage].duration
+  };
+
   for(const p of memory.participants.values()){
-    if(ids.includes(p.id)){p.status="live"; await dbUpdateParticipant(p.id,{status:"live"});}
+    if(ids.includes(p.id)){
+      p.status="live";
+      await dbUpdateParticipant(p.id,{status:"live"});
+    }
   }
+
   if(supabase){
     await supabase.from("quiz_settings").upsert({
-      id:1,active_stage:stage,status:"running",started_at:memory.quiz.startedAt,updated_at:new Date().toISOString()
+      id:1,
+      active_stage:stage,
+      status:"running",
+      started_at:memory.quiz.startedAt,
+      updated_at:new Date().toISOString()
     });
   }
-  io.to("participants").emit("quiz:started",{stage,durationSeconds:QUIZZES[stage].duration,participantIds:ids});
+
+  io.to("participants").emit(
+    "quiz:started",
+    {
+      stage,
+      durationSeconds:QUIZZES[stage].duration,
+      participantIds:ids
+    }
+  );
+
   broadcastDashboard();
-  res.json({ok:true,stage,participantIds:ids});
+
+  res.json({
+    ok:true,
+    stage,
+    participantIds:ids
+  });
 });
 
 app.post("/api/coordinator/finish",coordinatorAuth,async(req,res)=>{
-  if(!memory.quiz.activeStage) return res.status(400).json({error:"No quiz is running."});
+  if(!memory.quiz.activeStage)
+    return res.status(400).json({
+      error:"No quiz is running."
+    });
+
   const stage=memory.quiz.activeStage;
+
   for(const p of memory.participants.values()){
     if(p.status==="live"){
-      p.status = stage === "A" ? "waiting" : "submitted";
-      p.completed_at = stage === "B" ? new Date().toISOString() : null;
-      await dbUpdateParticipant(p.id,{status:p.status,completed_at:p.completed_at});
+      p.status=stage==="A"?"waiting":"submitted";
+
+      p.completed_at=stage==="B"
+        ?new Date().toISOString()
+        :null;
+
+      await dbUpdateParticipant(
+        p.id,
+        {
+          status:p.status,
+          completed_at:p.completed_at
+        }
+      );
     }
   }
-  memory.quiz={activeStage:stage,status:"finished",startedAt:memory.quiz.startedAt,durationSeconds:memory.quiz.durationSeconds};
-  if(supabase) await supabase.from("quiz_settings").update({status:"finished",updated_at:new Date().toISOString()}).eq("id",1);
-  io.to("participants").emit("quiz:finished",{final:stage==="B"});
+
+  memory.quiz={
+    activeStage:stage,
+    status:"finished",
+    startedAt:memory.quiz.startedAt,
+    durationSeconds:memory.quiz.durationSeconds
+  };
+
+  if(supabase)
+    await supabase
+      .from("quiz_settings")
+      .update({
+        status:"finished",
+        updated_at:new Date().toISOString()
+      })
+      .eq("id",1);
+
+  io.to("participants").emit(
+    "quiz:finished",
+    {final:stage==="B"}
+  );
+
   broadcastDashboard();
+
   res.json({ok:true});
 });
 
-app.get("/api/coordinator/export",coordinatorAuth,async(req,res)=>{
-  const rows=[...memory.participants.values()].sort((a,b)=>
-    (b.stage_b_score+b.stage_a_score)-(a.stage_b_score+a.stage_a_score)
-  );
-  const header=["Team Name","College Name","Quiz A Score","Quiz A Correct","Quiz A Used","Quiz B Score","Quiz B Correct","Quiz B Used","Total Score","Status","Joined At","Completed At"];
-  const csv=[header.join(",")].concat(rows.map(p=>[
-    p.team_name,p.college_name,p.stage_a_score,p.stage_a_correct,p.stage_a_used,
-    p.stage_b_score,p.stage_b_correct,p.stage_b_used,p.stage_a_score+p.stage_b_score,
-    p.status,p.joined_at,p.completed_at||""
-  ].map(v=>`"${String(v).replace(/"/g,'""')}"`).join(","))).join("\n");
-  res.setHeader("Content-Type","text/csv;charset=utf-8");
-  res.setHeader("Content-Disposition",'attachment; filename="xyfronix-ai-prompt-battle-results.csv"');
-  res.send(csv);
-});
+app.get(
+  "/api/coordinator/export",
+  coordinatorAuth,
+  async(req,res)=>{
+    const rows=[...memory.participants.values()].sort(
+      (a,b)=>
+        (b.stage_b_score+b.stage_a_score)-
+        (a.stage_b_score+a.stage_a_score)
+    );
+
+    const header=[
+      "Team Name",
+      "College Name",
+      "Quiz A Score",
+      "Quiz A Correct",
+      "Quiz A Used",
+      "Quiz B Score",
+      "Quiz B Correct",
+      "Quiz B Used",
+      "Total Score",
+      "Status",
+      "Joined At",
+      "Completed At"
+    ];
+
+    const csv=[header.join(",")]
+      .concat(
+        rows.map(p=>[
+          p.team_name,
+          p.college_name,
+          p.stage_a_score,
+          p.stage_a_correct,
+          p.stage_a_used,
+          p.stage_b_score,
+          p.stage_b_correct,
+          p.stage_b_used,
+          p.stage_a_score+p.stage_b_score,
+          p.status,
+          p.joined_at,
+          p.completed_at||""
+        ]
+        .map(v=>`"${String(v).replace(/"/g,'""')}"`)
+        .join(","))
+      )
+      .join("\n");
+
+    res.setHeader(
+      "Content-Type",
+      "text/csv;charset=utf-8"
+    );
+
+    res.setHeader(
+      "Content-Disposition",
+      'attachment; filename="xyfronix-ai-prompt-battle-results.csv"'
+    );
+
+    res.send(csv);
+  }
+);
 
 io.on("connection",(socket)=>{
-  socket.on("participant:join-room",({participantId})=>{
-    const p=memory.participants.get(participantId);
-    if(!p) return;
-    socket.join("participants"); socket.join(`participant:${participantId}`);
-  });
-  socket.on("coordinator:join",()=>socket.join("coordinators"));
+  socket.on(
+    "participant:join-room",
+    ({participantId})=>{
+      const p=memory.participants.get(participantId);
+
+      if(!p) return;
+
+      socket.join("participants");
+      socket.join(`participant:${participantId}`);
+    }
+  );
+
+  socket.on(
+    "coordinator:join",
+    ()=>socket.join("coordinators")
+  );
 });
 
-setInterval(()=>broadcastDashboard(),3000);
+setInterval(
+  ()=>broadcastDashboard(),
+  3000
+);
 
-app.get("*", (req,res,next)=>{
-  if(req.path.startsWith("/api/")) return next();
-  if(req.path.startsWith("/socket.io/")) return next();
-  res.sendFile(require("path").join(__dirname, "public", "index.html"));
+// EXPRESS 5 FIX
+app.get("/{*splat}",(req,res,next)=>{
+  if(req.path.startsWith("/api/"))
+    return next();
+
+  if(req.path.startsWith("/socket.io/"))
+    return next();
+
+  res.sendFile(
+    require("path").join(
+      __dirname,
+      "public",
+      "index.html"
+    )
+  );
 });
 
-server.listen(PORT, "0.0.0.0", ()=>console.log(`XYFRONIX backend running on port ${PORT}`));
+server.listen(
+  PORT,
+  "0.0.0.0",
+  ()=>console.log(
+    `XYFRONIX backend running on port ${PORT}`
+  )
+);
