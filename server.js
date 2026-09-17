@@ -2,10 +2,9 @@ require("dotenv").config();
 
 const express = require("express");
 const http = require("http");
+const path = require("path");
 const cors = require("cors");
 const crypto = require("crypto");
-const path = require("path");
-
 const { Server } = require("socket.io");
 const { createClient } = require("@supabase/supabase-js");
 
@@ -19,25 +18,40 @@ const io = new Server(server, {
   }
 });
 
-app.use(cors());
-app.use(express.json());
-
-app.use(express.static(path.join(__dirname, "public")));
-
 const PORT = Number(process.env.PORT || 4000);
-
-const COORDINATOR_CODE =
-  process.env.COORDINATOR_CODE || "XYF26";
+const COORDINATOR_CODE = process.env.COORDINATOR_CODE || "XYF26";
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
-
 const SUPABASE_KEY =
   process.env.SUPABASE_SECRET_KEY ||
   process.env.SUPABASE_SERVICE_ROLE_KEY;
 
+const PUBLIC_DIR = path.join(__dirname, "public");
+
+/* =========================================================
+   MIDDLEWARE
+========================================================= */
+
+app.use(cors());
+app.use(express.json({ limit: "1mb" }));
+
+/*
+  Static files:
+  /index.html
+  /app.js
+  /config.js
+  /style.css
+  /logo.png
+*/
+app.use(express.static(PUBLIC_DIR));
+
+/* =========================================================
+   SUPABASE
+========================================================= */
+
 if (!SUPABASE_URL || !SUPABASE_KEY) {
   console.warn(
-    "WARNING: Supabase env vars are missing. Database persistence will fail."
+    "WARNING: Supabase env vars are missing. Database persistence will not work."
   );
 }
 
@@ -49,7 +63,6 @@ const supabase =
         }
       })
     : null;
-
 
 /* =========================================================
    QUIZ DATA
@@ -568,12 +581,11 @@ const QUIZZES = {
   }
 };
 
-
 /* =========================================================
    MEMORY
 ========================================================= */
 
-let memory = {
+const memory = {
   participants: new Map(),
 
   quiz: {
@@ -583,273 +595,127 @@ let memory = {
     durationSeconds: 0
   },
 
-  answersA: new Set(),
-  answersB: new Set(),
+  /*
+    participantId:stage:index
+    -> randomized option order
+  */
+  displayOrders: new Map(),
 
-  displayOrders: new Map()
+  /*
+    Prevent duplicate answer submissions.
+  */
+  answersA: new Set(),
+  answersB: new Set()
 };
 
+/* =========================================================
+   HELPERS
+========================================================= */
+
+function stageQuestions(stage) {
+  return QUIZZES[stage].questions;
+}
+
+function sanitizeParticipant(p) {
+  return p;
+}
+
+function randomOrder(length) {
+  const order = Array.from({ length }, (_, i) => i);
+
+  for (let i = order.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+
+    [order[i], order[j]] = [order[j], order[i]];
+  }
+
+  return order;
+}
 
 /* =========================================================
-   DATABASE HELPERS
+   SUPABASE HELPERS
 ========================================================= */
 
 async function dbInsertParticipant(participant) {
   if (!supabase) return;
 
-  const { error } = await supabase
-    .from("participants")
-    .insert(participant);
+  try {
+    const { error } = await supabase
+      .from("participants")
+      .insert(participant);
 
-  if (error) {
-    console.error("Supabase participant insert error:", error);
+    if (error) {
+      console.error("Supabase participant insert error:", error);
+    }
+  } catch (error) {
+    console.error("Supabase insert exception:", error);
   }
 }
-
 
 async function dbUpdateParticipant(id, patch) {
   if (!supabase) return;
 
-  const { error } = await supabase
-    .from("participants")
-    .update(patch)
-    .eq("id", id);
+  try {
+    const { error } = await supabase
+      .from("participants")
+      .update(patch)
+      .eq("id", id);
 
-  if (error) {
-    console.error("Supabase participant update error:", error);
+    if (error) {
+      console.error("Supabase participant update error:", error);
+    }
+  } catch (error) {
+    console.error("Supabase update exception:", error);
   }
 }
-
 
 async function dbInsertAnswer(row) {
   if (!supabase) return;
 
-  const { error } = await supabase
-    .from("answers")
-    .upsert(row, {
-      onConflict: "participant_id,stage,question_index"
-    });
+  try {
+    const { error } = await supabase
+      .from("answers")
+      .upsert(row, {
+        onConflict: "participant_id,stage,question_index"
+      });
 
-  if (error) {
-    console.error("Supabase answer insert error:", error);
+    if (error) {
+      console.error("Supabase answer insert error:", error);
+    }
+  } catch (error) {
+    console.error("Supabase answer exception:", error);
   }
 }
-
-
-async function dbDeleteParticipant(id) {
-  if (!supabase) return;
-
-  const answerResult = await supabase
-    .from("answers")
-    .delete()
-    .eq("participant_id", id);
-
-  if (answerResult.error) {
-    console.error(
-      "Supabase answer delete error:",
-      answerResult.error
-    );
-  }
-
-  const participantResult = await supabase
-    .from("participants")
-    .delete()
-    .eq("id", id);
-
-  if (participantResult.error) {
-    console.error(
-      "Supabase participant delete error:",
-      participantResult.error
-    );
-  }
-}
-
-
-/* =========================================================
-   QUESTION RANDOMIZATION
-========================================================= */
-
-function shuffleArray(array) {
-  const arr = [...array];
-
-  for (let i = arr.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-
-    [arr[i], arr[j]] = [arr[j], arr[i]];
-  }
-
-  return arr;
-}
-
-
-function getDisplayOrder(stage, questionIndex, participantId) {
-  const key =
-    `${participantId}:${stage}:${questionIndex}`;
-
-  if (memory.displayOrders.has(key)) {
-    return memory.displayOrders.get(key);
-  }
-
-  const question =
-    QUIZZES[stage].questions[questionIndex];
-
-  const order =
-    shuffleArray(
-      question.o.map((_, index) => index)
-    );
-
-  memory.displayOrders.set(key, order);
-
-  return order;
-}
-
-
-/*
-  Example:
-
-  Original:
-  A = correct
-  B
-  C
-  D
-
-  Participant 1 may see:
-  C
-  A
-  D
-  B
-
-  Participant 2 may see:
-  B
-  D
-  A
-  C
-
-  Backend still knows original correct answer.
-*/
-
-
-function publicQuestion(
-  stage,
-  index,
-  participantId
-) {
-  const question =
-    QUIZZES[stage].questions[index];
-
-  if (!question) {
-    return null;
-  }
-
-  const displayOrder =
-    getDisplayOrder(
-      stage,
-      index,
-      participantId
-    );
-
-  const shuffledOptions =
-    displayOrder.map(
-      originalIndex =>
-        question.o[originalIndex]
-    );
-
-  return {
-    index,
-
-    total:
-      QUIZZES[stage].questions.length,
-
-    question:
-      question.q,
-
-    options:
-      shuffledOptions,
-
-    marks:
-      QUIZZES[stage].marks,
-
-    /*
-      optionMap[displayIndex]
-      = original question option index
-
-      Frontend sends this value back.
-    */
-    optionMap:
-      displayOrder
-  };
-}
-
 
 /* =========================================================
    DASHBOARD
 ========================================================= */
 
-function sanitizeParticipant(participant) {
-  return {
-    id: participant.id,
-    team_name: participant.team_name,
-    college_name: participant.college_name,
-
-    status: participant.status,
-
-    stage_a_score:
-      participant.stage_a_score,
-
-    stage_a_correct:
-      participant.stage_a_correct,
-
-    stage_a_used:
-      participant.stage_a_used,
-
-    stage_b_score:
-      participant.stage_b_score,
-
-    stage_b_correct:
-      participant.stage_b_correct,
-
-    stage_b_used:
-      participant.stage_b_used,
-
-    joined_at:
-      participant.joined_at,
-
-    completed_at:
-      participant.completed_at
-  };
-}
-
-
 function dashboardState() {
   return {
     quiz: memory.quiz,
 
-    participants:
-      [...memory.participants.values()]
-        .map(sanitizeParticipant)
+    participants: [
+      ...memory.participants.values()
+    ].map(sanitizeParticipant)
   };
 }
 
-
 function broadcastDashboard() {
-  io
-    .to("coordinators")
-    .emit(
-      "dashboard:update",
-      dashboardState()
-    );
+  io.to("coordinators").emit(
+    "dashboard:update",
+    dashboardState()
+  );
 }
-
 
 /* =========================================================
    RANKING
 ========================================================= */
 
-function rankFor(stage) {
-  const rows =
-    [...memory.participants.values()];
-
-  rows.sort((a, b) => {
+async function rankFor(stage) {
+  const rows = [
+    ...memory.participants.values()
+  ].sort((a, b) => {
     const scoreA =
       stage === "B"
         ? a.stage_b_score
@@ -860,32 +726,89 @@ function rankFor(stage) {
         ? b.stage_b_score
         : b.stage_a_score;
 
-    if (scoreB !== scoreA) {
-      return scoreB - scoreA;
-    }
-
     return (
+      scoreB - scoreA ||
       new Date(a.joined_at) -
-      new Date(b.joined_at)
+        new Date(b.joined_at)
     );
   });
 
   return rows;
 }
 
+/* =========================================================
+   PUBLIC QUESTION
+   RANDOM OPTION ORDER
+========================================================= */
+
+function publicQuestion(
+  stage,
+  index,
+  participantId
+) {
+  const q = stageQuestions(stage)[index];
+
+  if (!q) return null;
+
+  const key =
+    `${participantId || "anon"}:${stage}:${index}`;
+
+  let order =
+    memory.displayOrders.get(key);
+
+  if (!order) {
+    order = randomOrder(q.o.length);
+
+    memory.displayOrders.set(
+      key,
+      order
+    );
+  }
+
+  return {
+    index,
+
+    total: stageQuestions(stage).length,
+
+    question: q.q,
+
+    /*
+      These are shuffled options.
+    */
+    options: order.map(
+      (originalIndex) =>
+        q.o[originalIndex]
+    ),
+
+    /*
+      Example:
+      [2,0,3,1]
+
+      means displayed A = original C,
+      displayed B = original A,
+      displayed C = original D,
+      displayed D = original B.
+    */
+    optionMap: order,
+
+    marks: QUIZZES[stage].marks
+  };
+}
 
 /* =========================================================
    HEALTH
 ========================================================= */
 
-app.get("/api/health", (req, res) => {
-  res.json({
-    ok: true,
-    service:
-      "XYFRONIX '26 AI Prompt Battle"
-  });
-});
-
+app.get(
+  "/api/health",
+  (req, res) => {
+    res.json({
+      ok: true,
+      service:
+        "XYFRONIX '26 AI Prompt Battle"
+    });
+  }
+);
 
 /* =========================================================
    PARTICIPANT JOIN
@@ -894,80 +817,90 @@ app.get("/api/health", (req, res) => {
 app.post(
   "/api/participant/join",
   async (req, res) => {
-    const teamName =
-      String(
-        req.body.teamName || ""
-      ).trim();
+    try {
+      const teamName =
+        String(
+          req.body.teamName || ""
+        ).trim();
 
-    const collegeName =
-      String(
-        req.body.collegeName || ""
-      ).trim();
+      const collegeName =
+        String(
+          req.body.collegeName || ""
+        ).trim();
 
-    if (!teamName || !collegeName) {
-      return res.status(400).json({
+      if (!teamName || !collegeName) {
+        return res.status(400).json({
+          error:
+            "Team name and college name are required."
+        });
+      }
+
+      if (
+        memory.quiz.status ===
+        "running"
+      ) {
+        return res.status(409).json({
+          error:
+            "A quiz is already running. Please wait for the next session."
+        });
+      }
+
+      const id =
+        crypto.randomUUID();
+
+      const participant = {
+        id,
+
+        team_name: teamName,
+
+        college_name: collegeName,
+
+        status: "waiting",
+
+        stage_a_score: 0,
+        stage_a_correct: 0,
+        stage_a_used: 0,
+
+        stage_b_score: 0,
+        stage_b_correct: 0,
+        stage_b_used: 0,
+
+        joined_at:
+          new Date().toISOString(),
+
+        completed_at: null
+      };
+
+      memory.participants.set(
+        id,
+        participant
+      );
+
+      await dbInsertParticipant(
+        participant
+      );
+
+      broadcastDashboard();
+
+      return res.json({
+        participant
+      });
+    } catch (error) {
+      console.error(
+        "Participant join error:",
+        error
+      );
+
+      return res.status(500).json({
         error:
-          "Team name and college name are required."
+          "Unable to join participant."
       });
     }
-
-    if (memory.quiz.status === "running") {
-      return res.status(409).json({
-        error:
-          "A quiz is already running. Please wait for the next session."
-      });
-    }
-
-    const id =
-      crypto.randomUUID();
-
-    const participant = {
-      id,
-
-      team_name:
-        teamName,
-
-      college_name:
-        collegeName,
-
-      status:
-        "waiting",
-
-      stage_a_score: 0,
-      stage_a_correct: 0,
-      stage_a_used: 0,
-
-      stage_b_score: 0,
-      stage_b_correct: 0,
-      stage_b_used: 0,
-
-      joined_at:
-        new Date().toISOString(),
-
-      completed_at:
-        null
-    };
-
-    memory.participants.set(
-      id,
-      participant
-    );
-
-    await dbInsertParticipant(
-      participant
-    );
-
-    broadcastDashboard();
-
-    res.json({
-      participant
-    });
   }
 );
 
-
 /* =========================================================
-   GET PARTICIPANT
+   PARTICIPANT STATE
 ========================================================= */
 
 app.get(
@@ -985,76 +918,64 @@ app.get(
       });
     }
 
-    res.json(participant);
+    return res.json(
+      participant
+    );
   }
 );
 
-
 /* =========================================================
-   GET QUESTION
+   LOAD QUESTION
 ========================================================= */
 
 app.get(
   "/api/quiz/:stage/question/:index",
   (req, res) => {
-    const stage =
-      String(
-        req.params.stage || ""
-      ).toUpperCase();
+    try {
+      const stage =
+        String(
+          req.params.stage || ""
+        ).toUpperCase();
 
-    const index =
-      Number(
-        req.params.index
+      const index =
+        Number(req.params.index);
+
+      if (
+        !QUIZZES[stage] ||
+        !Number.isInteger(index) ||
+        index < 0 ||
+        index >=
+          stageQuestions(stage).length
+      ) {
+        return res.status(404).json({
+          error:
+            "Question not found."
+        });
+      }
+
+      const question =
+        publicQuestion(
+          stage,
+          index,
+          req.query.participantId
+        );
+
+      return res.json(
+        question
+      );
+    } catch (error) {
+      console.error(
+        "Question error:",
+        error
       );
 
-    const participantId =
-      String(
-        req.query.participantId || ""
-      );
-
-    if (
-      !QUIZZES[stage] ||
-      !Number.isInteger(index) ||
-      index < 0 ||
-      index >=
-        QUIZZES[stage].questions.length
-    ) {
-      return res.status(404).json({
+      return res.status(500).json({
         error:
-          "Question not found."
+          "Unable to load question."
       });
     }
-
-    if (!participantId) {
-      return res.status(400).json({
-        error:
-          "Participant ID is required."
-      });
-    }
-
-    const participant =
-      memory.participants.get(
-        participantId
-      );
-
-    if (!participant) {
-      return res.status(404).json({
-        error:
-          "Participant not found."
-      });
-    }
-
-    const question =
-      publicQuestion(
-        stage,
-        index,
-        participantId
-      );
-
-    res.json(question);
   }
 );
-
 
 /* =========================================================
    SUBMIT ANSWER
@@ -1063,209 +984,272 @@ app.get(
 app.post(
   "/api/quiz/answer",
   async (req, res) => {
-    const {
-      participantId,
-      stage,
-      questionIndex,
-      selectedOption
-    } = req.body;
+    try {
+      const participantId =
+        String(
+          req.body.participantId || ""
+        );
 
-    const p =
-      memory.participants.get(
-        participantId
-      );
+      const stage =
+        String(
+          req.body.stage || ""
+        ).toUpperCase();
 
-    if (!p) {
-      return res.status(404).json({
-        error:
-          "Participant not found."
-      });
-    }
+      const questionIndex =
+        Number(
+          req.body.questionIndex
+        );
 
-    if (
-      memory.quiz.status !==
-        "running" ||
-      memory.quiz.activeStage !==
-        stage
-    ) {
-      return res.status(409).json({
-        error:
-          "This quiz is not currently running."
-      });
-    }
-
-    const idx =
-      Number(questionIndex);
-
-    const selectedDisplayIndex =
-      Number(selectedOption);
-
-    const q =
-      stageQuestions(stage)[idx];
-
-    if (
-      !q ||
-      !Number.isInteger(
-        selectedDisplayIndex
-      ) ||
-      selectedDisplayIndex < 0 ||
-      selectedDisplayIndex >=
-        q.o.length
-    ) {
-      return res.status(400).json({
-        error:
-          "Invalid question or option."
-      });
-    }
-
-    const answerSet =
-      stage === "A"
-        ? memory.answersA
-        : memory.answersB;
-
-    const answerKey =
-      `${participantId}:${stage}:${idx}`;
-
-    if (answerSet.has(answerKey)) {
-      return res.status(409).json({
-        error:
-          "This question was already submitted."
-      });
-    }
-
-    /*
-      Convert displayed option position
-      back to original answer position.
-    */
-
-    const displayOrder =
-      getDisplayOrder(
-        stage,
-        idx,
-        participantId
-      );
-
-    const originalOptionIndex =
-      displayOrder[
-        selectedDisplayIndex
-      ];
-
-    answerSet.add(answerKey);
-
-    const correct =
-      originalOptionIndex === q.a;
-
-    const marksAwarded =
-      correct
-        ? QUIZZES[stage].marks
-        : 0;
-
-    const usedField =
-      stage === "A"
-        ? "stage_a_used"
-        : "stage_b_used";
-
-    const scoreField =
-      stage === "A"
-        ? "stage_a_score"
-        : "stage_b_score";
-
-    const correctField =
-      stage === "A"
-        ? "stage_a_correct"
-        : "stage_b_correct";
-
-    p[usedField] += 1;
-
-    p[scoreField] +=
-      marksAwarded;
-
-    if (correct) {
-      p[correctField] += 1;
-    }
-
-    p.status = "live";
-
-    await dbUpdateParticipant(
-      p.id,
-      {
-        [usedField]:
-          p[usedField],
-
-        [scoreField]:
-          p[scoreField],
-
-        [correctField]:
-          p[correctField],
-
-        status:
-          "live"
-      }
-    );
-
-    await dbInsertAnswer({
-      participant_id:
-        p.id,
-
-      stage,
-
-      question_index:
-        idx,
+      const selectedOption =
+        Number(
+          req.body.selectedOption
+        );
 
       /*
-        Save ORIGINAL option index.
+        Validate participant.
       */
-      selected_option:
-        originalOptionIndex,
+      const participant =
+        memory.participants.get(
+          participantId
+        );
 
-      is_correct:
+      if (!participant) {
+        return res.status(404).json({
+          error:
+            "Participant not found."
+        });
+      }
+
+      /*
+        Validate stage.
+      */
+      if (!QUIZZES[stage]) {
+        return res.status(400).json({
+          error:
+            "Invalid quiz stage."
+        });
+      }
+
+      /*
+        Quiz must be running.
+      */
+      if (
+        memory.quiz.status !==
+          "running" ||
+        memory.quiz.activeStage !==
+          stage
+      ) {
+        return res.status(409).json({
+          error:
+            "This quiz is not currently running."
+        });
+      }
+
+      /*
+        Validate question.
+      */
+      const question =
+        stageQuestions(stage)[
+          questionIndex
+        ];
+
+      if (
+        !question ||
+        !Number.isInteger(
+          selectedOption
+        ) ||
+        selectedOption < 0 ||
+        selectedOption >=
+          question.o.length
+      ) {
+        return res.status(400).json({
+          error:
+            "Invalid question or option."
+        });
+      }
+
+      /*
+        IMPORTANT:
+
+        selectedOption coming from frontend
+        is the ORIGINAL question option index.
+
+        app.js converts shuffled displayed
+        position -> original index using optionMap.
+      */
+
+      const answerSet =
+        stage === "A"
+          ? memory.answersA
+          : memory.answersB;
+
+      const answerKey =
+        `${participantId}:${stage}:${questionIndex}`;
+
+      /*
+        Prevent double submit.
+      */
+      if (
+        answerSet.has(answerKey)
+      ) {
+        return res.status(409).json({
+          error:
+            "This question was already submitted."
+        });
+      }
+
+      answerSet.add(answerKey);
+
+      /*
+        Fields.
+      */
+      const usedField =
+        stage === "A"
+          ? "stage_a_used"
+          : "stage_b_used";
+
+      const scoreField =
+        stage === "A"
+          ? "stage_a_score"
+          : "stage_b_score";
+
+      const correctField =
+        stage === "A"
+          ? "stage_a_correct"
+          : "stage_b_correct";
+
+      /*
+        Check answer.
+      */
+      const correct =
+        selectedOption ===
+        question.a;
+
+      const marksAwarded =
+        correct
+          ? QUIZZES[stage].marks
+          : 0;
+
+      /*
+        Update participant.
+      */
+      participant[usedField] += 1;
+
+      participant[scoreField] +=
+        marksAwarded;
+
+      if (correct) {
+        participant[correctField] +=
+          1;
+      }
+
+      participant.status = "live";
+
+      await dbUpdateParticipant(
+        participant.id,
+        {
+          [usedField]:
+            participant[usedField],
+
+          [scoreField]:
+            participant[scoreField],
+
+          [correctField]:
+            participant[correctField],
+
+          status: "live"
+        }
+      );
+
+      /*
+        Save answer.
+      */
+      await dbInsertAnswer({
+        participant_id:
+          participant.id,
+
+        stage,
+
+        question_index:
+          questionIndex,
+
+        selected_option:
+          selectedOption,
+
+        is_correct:
+          correct,
+
+        marks:
+          marksAwarded,
+
+        submitted_at:
+          new Date().toISOString()
+      });
+
+      /*
+        Calculate current position.
+      */
+      const rows =
+        await rankFor(stage);
+
+      const position =
+        rows.findIndex(
+          (p) =>
+            p.id ===
+            participant.id
+        ) + 1;
+
+      /*
+        Update participant browser.
+      */
+      io.to(
+        `participant:${participant.id}`
+      ).emit(
+        "participant:update",
+        participant
+      );
+
+      /*
+        Update coordinator dashboard.
+      */
+      broadcastDashboard();
+
+      /*
+        ALWAYS RETURN JSON.
+      */
+      return res.status(200).json({
+        ok: true,
+
         correct,
 
-      marks:
         marksAwarded,
 
-      submitted_at:
-        new Date().toISOString()
-    });
+        correctAnswer:
+          question.o[question.a],
 
-    const rows =
-      rankFor(stage);
+        score:
+          participant[scoreField],
 
-    const position =
-      rows.findIndex(
-        x => x.id === p.id
-      ) + 1;
-
-    io
-      .to(
-        `participant:${p.id}`
-      )
-      .emit(
-        "participant:update",
-        p
+        position
+      });
+    } catch (error) {
+      console.error(
+        "ANSWER API ERROR:",
+        error
       );
 
-    broadcastDashboard();
-
-    res.json({
-      correct,
-
-      marksAwarded,
-
       /*
-        Correct answer text.
+        VERY IMPORTANT:
+        Even if backend crashes, return JSON,
+        NOT index.html.
       */
-      correctAnswer:
-        q.o[q.a],
-
-      score:
-        p[scoreField],
-
-      position
-    });
+      return res.status(500).json({
+        error:
+          "Server error while submitting answer."
+      });
+    }
   }
 );
-
 
 /* =========================================================
    FINISH PARTICIPANT QUIZ
@@ -1274,61 +1258,82 @@ app.post(
 app.post(
   "/api/quiz/finish",
   async (req, res) => {
-    const {
-      participantId,
-      stage
-    } = req.body;
+    try {
+      const participantId =
+        String(
+          req.body.participantId || ""
+        );
 
-    const p =
-      memory.participants.get(
-        participantId
+      const stage =
+        String(
+          req.body.stage || ""
+        ).toUpperCase();
+
+      const participant =
+        memory.participants.get(
+          participantId
+        );
+
+      if (!participant) {
+        return res.status(404).json({
+          error:
+            "Participant not found."
+        });
+      }
+
+      if (!QUIZZES[stage]) {
+        return res.status(400).json({
+          error:
+            "Invalid quiz stage."
+        });
+      }
+
+      /*
+        After Quiz A:
+        participant waits for Quiz B.
+
+        After Quiz B:
+        participant is submitted.
+      */
+      participant.status =
+        stage === "A"
+          ? "waiting"
+          : "submitted";
+
+      participant.completed_at =
+        stage === "B"
+          ? new Date().toISOString()
+          : null;
+
+      await dbUpdateParticipant(
+        participant.id,
+        {
+          status:
+            participant.status,
+
+          completed_at:
+            participant.completed_at
+        }
       );
 
-    if (!p) {
-      return res.status(404).json({
+      broadcastDashboard();
+
+      return res.json({
+        ok: true
+      });
+    } catch (error) {
+      console.error(
+        "Finish error:",
+        error
+      );
+
+      return res.status(500).json({
         error:
-          "Participant not found."
+          "Unable to finish quiz."
       });
     }
-
-    /*
-      After Quiz A:
-      participant becomes waiting,
-      so coordinator can start Quiz B.
-
-      After Quiz B:
-      participant becomes submitted.
-    */
-
-    p.status =
-      stage === "A"
-        ? "waiting"
-        : "submitted";
-
-    p.completed_at =
-      stage === "B"
-        ? new Date().toISOString()
-        : null;
-
-    await dbUpdateParticipant(
-      p.id,
-      {
-        status:
-          p.status,
-
-        completed_at:
-          p.completed_at
-      }
-    );
-
-    broadcastDashboard();
-
-    res.json({
-      ok: true
-    });
   }
 );
-
 
 /* =========================================================
    PARTICIPANT SUMMARY
@@ -1337,61 +1342,72 @@ app.post(
 app.get(
   "/api/participant/:id/summary",
   async (req, res) => {
-    const p =
-      memory.participants.get(
-        req.params.id
+    try {
+      const participant =
+        memory.participants.get(
+          req.params.id
+        );
+
+      if (!participant) {
+        return res.status(404).json({
+          error:
+            "Participant not found."
+        });
+      }
+
+      const rowsA =
+        await rankFor("A");
+
+      const rowsB =
+        await rankFor("B");
+
+      return res.json({
+        team:
+          participant.team_name,
+
+        stageA: {
+          score:
+            participant.stage_a_score,
+
+          correct:
+            participant.stage_a_correct,
+
+          position:
+            rowsA.findIndex(
+              (p) =>
+                p.id ===
+                participant.id
+            ) + 1
+        },
+
+        stageB: {
+          score:
+            participant.stage_b_score,
+
+          correct:
+            participant.stage_b_correct,
+
+          position:
+            rowsB.findIndex(
+              (p) =>
+                p.id ===
+                participant.id
+            ) + 1
+        }
+      });
+    } catch (error) {
+      console.error(
+        "Summary error:",
+        error
       );
 
-    if (!p) {
-      return res.status(404).json({
+      return res.status(500).json({
         error:
-          "Participant not found."
+          "Unable to load summary."
       });
     }
-
-    const rowsA =
-      rankFor("A");
-
-    const rowsB =
-      rankFor("B");
-
-    res.json({
-      team:
-        p.team_name,
-
-      stageA: {
-        score:
-          p.stage_a_score,
-
-        correct:
-          p.stage_a_correct,
-
-        position:
-          rowsA.findIndex(
-            x => x.id === p.id
-          ) + 1
-      },
-
-      stageB: {
-        score:
-          p.stage_b_score,
-
-        correct:
-          p.stage_b_correct,
-
-        position:
-          rowsB.findIndex(
-            x => x.id === p.id
-          ) + 1
-      },
-
-      totalScore:
-        p.stage_a_score +
-        p.stage_b_score
-    });
   }
 );
-
 
 /* =========================================================
    COORDINATOR AUTH
@@ -1399,7 +1415,6 @@ app.get(
 
 const coordinatorTokens =
   new Set();
-
 
 function coordinatorAuth(
   req,
@@ -1424,18 +1439,16 @@ function coordinatorAuth(
   next();
 }
 
-
-/* =========================================================
-   COORDINATOR LOGIN
-========================================================= */
-
 app.post(
   "/api/coordinator/login",
   (req, res) => {
-    if (
+    const code =
       String(
         req.body.code || ""
-      ) !==
+      ).trim();
+
+    if (
+      code !==
       COORDINATOR_CODE
     ) {
       return res.status(401).json({
@@ -1448,14 +1461,15 @@ app.post(
       crypto.randomBytes(24)
         .toString("hex");
 
-    coordinatorTokens.add(token);
+    coordinatorTokens.add(
+      token
+    );
 
-    res.json({
+    return res.json({
       token
     });
   }
 );
-
 
 /* =========================================================
    COORDINATOR STATE
@@ -1465,12 +1479,11 @@ app.get(
   "/api/coordinator/state",
   coordinatorAuth,
   (req, res) => {
-    res.json(
+    return res.json(
       dashboardState()
     );
   }
 );
-
 
 /* =========================================================
    START QUIZ
@@ -1480,257 +1493,251 @@ app.post(
   "/api/coordinator/start",
   coordinatorAuth,
   async (req, res) => {
-    const stage =
-      String(
-        req.body.stage || ""
-      ).toUpperCase();
+    try {
+      const stage =
+        String(
+          req.body.stage || ""
+        ).toUpperCase();
 
-    if (!QUIZZES[stage]) {
-      return res.status(400).json({
-        error:
-          "Invalid quiz stage."
-      });
-    }
+      if (!QUIZZES[stage]) {
+        return res.status(400).json({
+          error:
+            "Invalid quiz stage."
+        });
+      }
 
-    if (
-      memory.quiz.status ===
-      "running"
-    ) {
-      return res.status(409).json({
-        error:
-          "A quiz is already running."
-      });
-    }
+      /*
+        Only participants who have not completed
+        the current overall flow are included.
 
-    /*
-      Only participants who are not
-      submitted can enter the next quiz.
-    */
+        After Quiz A:
+        status = waiting
 
-    const ids =
-      [...memory.participants.values()]
-        .filter(
-          p =>
+        After Quiz B:
+        status = submitted
+      */
+      const participants =
+        [
+          ...memory.participants.values()
+        ].filter(
+          (p) =>
             p.status !==
             "submitted"
-        )
-        .map(
-          p => p.id
         );
 
-    if (!ids.length) {
-      return res.status(400).json({
-        error:
-          "No waiting participants found."
-      });
-    }
+      if (!participants.length) {
+        return res.status(400).json({
+          error:
+            "No waiting participants found."
+        });
+      }
 
-    const startedAt =
-      new Date().toISOString();
+      const ids =
+        participants.map(
+          (p) => p.id
+        );
 
-    memory.quiz = {
-      activeStage:
-        stage,
+      /*
+        Clear duplicate-answer protection
+        for the stage being started.
+      */
+      if (stage === "A") {
+        memory.answersA.clear();
+      } else {
+        memory.answersB.clear();
+      }
 
-      status:
-        "running",
+      /*
+        New quiz state.
+      */
+      memory.quiz = {
+        activeStage: stage,
 
-      startedAt,
+        status: "running",
 
-      durationSeconds:
-        QUIZZES[stage].duration
-    };
+        startedAt:
+          new Date().toISOString(),
 
-    for (
-      const p
-      of memory.participants.values()
-    ) {
-      if (
-        ids.includes(p.id)
+        durationSeconds:
+          QUIZZES[stage].duration
+      };
+
+      /*
+        Set participants live.
+      */
+      for (
+        const participant of participants
       ) {
-        p.status =
+        participant.status =
           "live";
 
         await dbUpdateParticipant(
-          p.id,
+          participant.id,
           {
-            status:
-              "live"
+            status: "live"
           }
         );
       }
-    }
 
-    /*
-      Save quiz state to Supabase.
-    */
+      /*
+        Save quiz state to Supabase.
+      */
+      if (supabase) {
+        const { error } =
+          await supabase
+            .from("quiz_settings")
+            .upsert({
+              id: 1,
 
-    if (supabase) {
-      const {
-        error
-      } =
-        await supabase
-          .from(
-            "quiz_settings"
-          )
-          .upsert({
-            id: 1,
+              active_stage:
+                stage,
 
-            active_stage:
-              stage,
+              status:
+                "running",
 
-            status:
-              "running",
+              started_at:
+                memory.quiz.startedAt,
 
-            started_at:
-              startedAt,
+              updated_at:
+                new Date().toISOString()
+            });
 
-            updated_at:
-              new Date()
-                .toISOString()
-          });
-
-      if (error) {
-        console.error(
-          "Quiz settings error:",
-          error
-        );
+        if (error) {
+          console.error(
+            "Quiz settings error:",
+            error
+          );
+        }
       }
-    }
 
-    /*
-      Tell every participant browser
-      that coordinator started quiz.
-    */
-
-    io
-      .to("participants")
-      .emit(
+      /*
+        Tell only selected participants
+        to start.
+      */
+      io.to("participants").emit(
         "quiz:started",
         {
           stage,
 
           durationSeconds:
-            QUIZZES[stage]
-              .duration,
+            QUIZZES[stage].duration,
 
           participantIds:
             ids
         }
       );
 
-    broadcastDashboard();
+      broadcastDashboard();
 
-    res.json({
-      ok: true,
+      return res.json({
+        ok: true,
 
-      stage,
+        stage,
 
-      participantIds:
-        ids
-    });
+        participantIds:
+          ids
+      });
+    } catch (error) {
+      console.error(
+        "Start quiz error:",
+        error
+      );
+
+      return res.status(500).json({
+        error:
+          "Unable to start quiz."
+      });
+    }
   }
 );
 
-
 /* =========================================================
-   FINISH QUIZ FROM COORDINATOR
+   FINISH CURRENT QUIZ
 ========================================================= */
 
 app.post(
   "/api/coordinator/finish",
   coordinatorAuth,
   async (req, res) => {
-    if (
-      !memory.quiz.activeStage
-    ) {
-      return res.status(400).json({
-        error:
-          "No quiz is running."
-      });
-    }
-
-    const stage =
-      memory.quiz.activeStage;
-
-    for (
-      const p
-      of memory.participants.values()
-    ) {
+    try {
       if (
-        p.status ===
-        "live"
+        !memory.quiz.activeStage
       ) {
-        p.status =
-          stage === "A"
-            ? "waiting"
-            : "submitted";
-
-        p.completed_at =
-          stage === "B"
-            ? new Date()
-                .toISOString()
-            : null;
-
-        await dbUpdateParticipant(
-          p.id,
-          {
-            status:
-              p.status,
-
-            completed_at:
-              p.completed_at
-          }
-        );
+        return res.status(400).json({
+          error:
+            "No quiz is running."
+        });
       }
-    }
 
-    memory.quiz = {
-      activeStage:
-        stage,
+      const stage =
+        memory.quiz.activeStage;
 
-      status:
-        "finished",
+      for (
+        const participant of
+        memory.participants.values()
+      ) {
+        if (
+          participant.status ===
+          "live"
+        ) {
+          participant.status =
+            stage === "A"
+              ? "waiting"
+              : "submitted";
 
-      startedAt:
-        memory.quiz.startedAt,
+          participant.completed_at =
+            stage === "B"
+              ? new Date().toISOString()
+              : null;
 
-      durationSeconds:
-        memory.quiz.durationSeconds
-    };
+          await dbUpdateParticipant(
+            participant.id,
+            {
+              status:
+                participant.status,
 
-    if (supabase) {
-      const {
-        error
-      } =
-        await supabase
-          .from(
-            "quiz_settings"
-          )
-          .update({
-            status:
-              "finished",
-
-            updated_at:
-              new Date()
-                .toISOString()
-          })
-          .eq(
-            "id",
-            1
+              completed_at:
+                participant.completed_at
+            }
           );
-
-      if (error) {
-        console.error(
-          "Quiz finish DB error:",
-          error
-        );
+        }
       }
-    }
 
-    io
-      .to("participants")
-      .emit(
+      memory.quiz = {
+        activeStage: stage,
+
+        status: "finished",
+
+        startedAt:
+          memory.quiz.startedAt,
+
+        durationSeconds:
+          memory.quiz
+            .durationSeconds
+      };
+
+      if (supabase) {
+        const { error } =
+          await supabase
+            .from("quiz_settings")
+            .update({
+              status:
+                "finished",
+
+              updated_at:
+                new Date().toISOString()
+            })
+            .eq("id", 1);
+
+        if (error) {
+          console.error(
+            "Quiz finish DB error:",
+            error
+          );
+        }
+      }
+
+      io.to("participants").emit(
         "quiz:finished",
         {
           final:
@@ -1738,14 +1745,24 @@ app.post(
         }
       );
 
-    broadcastDashboard();
+      broadcastDashboard();
 
-    res.json({
-      ok: true
-    });
+      return res.json({
+        ok: true
+      });
+    } catch (error) {
+      console.error(
+        "Coordinator finish error:",
+        error
+      );
+
+      return res.status(500).json({
+        error:
+          "Unable to finish quiz."
+      });
+    }
   }
 );
-
 
 /* =========================================================
    DELETE PARTICIPANT
@@ -1755,120 +1772,137 @@ app.delete(
   "/api/coordinator/participant/:id",
   coordinatorAuth,
   async (req, res) => {
-    const id =
-      req.params.id;
+    try {
+      const id =
+        req.params.id;
 
-    const participant =
-      memory.participants.get(
+      const participant =
+        memory.participants.get(
+          id
+        );
+
+      if (!participant) {
+        return res.status(404).json({
+          error:
+            "Participant not found."
+        });
+      }
+
+      /*
+        Delete answers first.
+      */
+      if (supabase) {
+        const {
+          error: answerError
+        } = await supabase
+          .from("answers")
+          .delete()
+          .eq(
+            "participant_id",
+            id
+          );
+
+        if (answerError) {
+          console.error(
+            "Delete answers error:",
+            answerError
+          );
+        }
+
+        /*
+          Delete participant.
+        */
+        const {
+          error: participantError
+        } = await supabase
+          .from("participants")
+          .delete()
+          .eq("id", id);
+
+        if (participantError) {
+          console.error(
+            "Delete participant error:",
+            participantError
+          );
+        }
+      }
+
+      /*
+        Remove from memory.
+      */
+      memory.participants.delete(
         id
       );
 
-    if (!participant) {
-      return res.status(404).json({
+      /*
+        Remove randomized question mappings.
+      */
+      for (
+        const key of
+        memory.displayOrders.keys()
+      ) {
+        if (
+          key.startsWith(
+            `${id}:`
+          )
+        ) {
+          memory.displayOrders.delete(
+            key
+          );
+        }
+      }
+
+      /*
+        Remove duplicate-answer locks.
+      */
+      for (
+        const set of [
+          memory.answersA,
+          memory.answersB
+        ]
+      ) {
+        for (
+          const key of set
+        ) {
+          if (
+            key.startsWith(
+              `${id}:`
+            )
+          ) {
+            set.delete(key);
+          }
+        }
+      }
+
+      /*
+        Tell participant browser
+        that it has been removed.
+      */
+      io.to(
+        `participant:${id}`
+      ).emit(
+        "participant:removed"
+      );
+
+      broadcastDashboard();
+
+      return res.json({
+        ok: true,
+        id
+      });
+    } catch (error) {
+      console.error(
+        "Delete participant error:",
+        error
+      );
+
+      return res.status(500).json({
         error:
-          "Participant not found."
+          "Unable to delete participant."
       });
     }
-
-    /*
-      Delete database records.
-    */
-
-    await dbDeleteParticipant(
-      id
-    );
-
-    /*
-      Remove from memory.
-    */
-
-    memory.participants.delete(
-      id
-    );
-
-    /*
-      Remove answer locks.
-    */
-
-    memory.answersA.forEach(
-      key => {
-        if (
-          key.startsWith(
-            `${id}:`
-          )
-        ) {
-          memory.answersA.delete(
-            key
-          );
-        }
-      }
-    );
-
-    memory.answersB.forEach(
-      key => {
-        if (
-          key.startsWith(
-            `${id}:`
-          )
-        ) {
-          memory.answersB.delete(
-            key
-          );
-        }
-      }
-    );
-
-    /*
-      Remove randomized question
-      mappings for this participant.
-    */
-
-    for (
-      const key
-      of memory.displayOrders.keys()
-    ) {
-      if (
-        key.startsWith(
-          `${id}:`
-        )
-      ) {
-        memory.displayOrders.delete(
-          key
-        );
-      }
-    }
-
-    /*
-      Tell that participant browser
-      that it was removed.
-    */
-
-    io
-      .to(
-        `participant:${id}`
-      )
-      .emit(
-        "participant:removed",
-        {
-          reason:
-            "You have been removed by the coordinator."
-        }
-      );
-
-    /*
-      Update coordinator dashboard.
-    */
-
-    broadcastDashboard();
-
-    res.json({
-      ok: true,
-      deletedParticipantId:
-        id
-    });
   }
 );
-
 
 /* =========================================================
    CSV EXPORT
@@ -1877,92 +1911,95 @@ app.delete(
 app.get(
   "/api/coordinator/export",
   coordinatorAuth,
-  async (req, res) => {
-    const rows =
-      [...memory.participants.values()]
-        .sort(
-          (a, b) =>
-            (
-              b.stage_a_score +
-              b.stage_b_score
-            ) -
-            (
-              a.stage_a_score +
-              a.stage_b_score
+  (req, res) => {
+    try {
+      const rows = [
+        ...memory.participants.values()
+      ].sort(
+        (a, b) =>
+          (
+            b.stage_a_score +
+            b.stage_b_score
+          ) -
+          (
+            a.stage_a_score +
+            a.stage_b_score
+          )
+      );
+
+      const header = [
+        "Team Name",
+        "College Name",
+        "Quiz A Score",
+        "Quiz A Correct",
+        "Quiz A Used",
+        "Quiz B Score",
+        "Quiz B Correct",
+        "Quiz B Used",
+        "Total Score",
+        "Status",
+        "Joined At",
+        "Completed At"
+      ];
+
+      const csvRows =
+        rows.map(
+          (p) => [
+            p.team_name,
+            p.college_name,
+            p.stage_a_score,
+            p.stage_a_correct,
+            p.stage_a_used,
+            p.stage_b_score,
+            p.stage_b_correct,
+            p.stage_b_used,
+            p.stage_a_score +
+              p.stage_b_score,
+            p.status,
+            p.joined_at,
+            p.completed_at || ""
+          ]
+            .map(
+              (value) =>
+                `"${String(
+                  value
+                ).replace(
+                  /"/g,
+                  '""'
+                )}"`
             )
+            .join(",")
         );
 
-    const header = [
-      "Team Name",
-      "College Name",
-      "Quiz A Score",
-      "Quiz A Correct",
-      "Quiz A Used",
-      "Quiz B Score",
-      "Quiz B Correct",
-      "Quiz B Used",
-      "Total Score",
-      "Status",
-      "Joined At",
-      "Completed At"
-    ];
+      const csv = [
+        header.join(","),
+        ...csvRows
+      ].join("\n");
 
-    const csv = [
-      header.join(",")
-    ]
-      .concat(
-        rows.map(
-          p =>
-            [
-              p.team_name,
-              p.college_name,
+      res.setHeader(
+        "Content-Type",
+        "text/csv;charset=utf-8"
+      );
 
-              p.stage_a_score,
-              p.stage_a_correct,
-              p.stage_a_used,
+      res.setHeader(
+        "Content-Disposition",
+        'attachment; filename="xyfronix-ai-prompt-battle-results.csv"'
+      );
 
-              p.stage_b_score,
-              p.stage_b_correct,
-              p.stage_b_used,
+      return res.send(csv);
+    } catch (error) {
+      console.error(
+        "CSV export error:",
+        error
+      );
 
-              p.stage_a_score +
-                p.stage_b_score,
-
-              p.status,
-
-              p.joined_at,
-
-              p.completed_at ||
-                ""
-            ]
-              .map(
-                value =>
-                  `"${String(
-                    value
-                  ).replace(
-                    /"/g,
-                    '""'
-                  )}"`
-              )
-              .join(",")
-        )
-      )
-      .join("\n");
-
-    res.setHeader(
-      "Content-Type",
-      "text/csv;charset=utf-8"
-    );
-
-    res.setHeader(
-      "Content-Disposition",
-      'attachment; filename="xyfronix-ai-prompt-battle-results.csv"'
-    );
-
-    res.send(csv);
+      return res.status(500).json({
+        error:
+          "Unable to export CSV."
+      });
+    }
   }
 );
-
 
 /* =========================================================
    SOCKET.IO
@@ -1970,15 +2007,23 @@ app.get(
 
 io.on(
   "connection",
-  socket => {
+  (socket) => {
+    console.log(
+      "Socket connected:",
+      socket.id
+    );
 
     /*
-      Participant joins realtime room.
+      Participant joins:
+      - global participant room
+      - personal participant room
     */
-
     socket.on(
       "participant:join-room",
       ({ participantId }) => {
+        if (!participantId) {
+          return;
+        }
 
         const participant =
           memory.participants.get(
@@ -1999,11 +2044,9 @@ io.on(
       }
     );
 
-
     /*
-      Coordinator joins dashboard room.
+      Coordinator room.
     */
-
     socket.on(
       "coordinator:join",
       () => {
@@ -2017,12 +2060,21 @@ io.on(
         );
       }
     );
+
+    socket.on(
+      "disconnect",
+      () => {
+        console.log(
+          "Socket disconnected:",
+          socket.id
+        );
+      }
+    );
   }
 );
 
-
 /* =========================================================
-   PERIODIC DASHBOARD SYNC
+   DASHBOARD LIVE REFRESH
 ========================================================= */
 
 setInterval(
@@ -2032,23 +2084,36 @@ setInterval(
   3000
 );
 
-
 /* =========================================================
-   EXPRESS 5 SPA FALLBACK
+   SPA FALLBACK
+   IMPORTANT:
+   API ROUTES NEVER GET index.html
 ========================================================= */
 
-app.get(
-  "/{*splat}",
+app.use(
   (req, res, next) => {
-
+    /*
+      If an API route wasn't found,
+      return JSON instead of index.html.
+    */
     if (
       req.path.startsWith(
         "/api/"
       )
     ) {
-      return next();
+      return res.status(404).json({
+        error:
+          "API route not found.",
+        method:
+          req.method,
+        path:
+          req.path
+      });
     }
 
+    /*
+      Socket.IO is handled by Socket.IO.
+    */
     if (
       req.path.startsWith(
         "/socket.io/"
@@ -2057,16 +2122,26 @@ app.get(
       return next();
     }
 
-    res.sendFile(
+    /*
+      SPA pages are GET only.
+    */
+    if (
+      req.method !== "GET"
+    ) {
+      return res.status(405).json({
+        error:
+          "Method not allowed."
+      });
+    }
+
+    return res.sendFile(
       path.join(
-        __dirname,
-        "public",
+        PUBLIC_DIR,
         "index.html"
       )
     );
   }
 );
-
 
 /* =========================================================
    START SERVER
@@ -2078,6 +2153,10 @@ server.listen(
   () => {
     console.log(
       `XYFRONIX backend running on port ${PORT}`
+    );
+
+    console.log(
+      `Public directory: ${PUBLIC_DIR}`
     );
   }
 );
