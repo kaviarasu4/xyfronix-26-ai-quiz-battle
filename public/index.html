@@ -3,873 +3,198 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-
   <title>XYFRONIX '26 | AI Prompt Battle</title>
-
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-
-  <link
-    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Orbitron:wght@500;600;700;800&display=swap"
-    rel="stylesheet"
-  >
-
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Orbitron:wght@500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css" />
 </head>
-
 <body>
-
   <div class="bg-grid"></div>
-
-  <!-- TOP BAR -->
   <header class="topbar">
-
     <div class="brand">
-
-      <img
-        src="logo.png"
-        alt="XYFRONIX '26 logo"
-      />
-
+      <img src="logo.png" alt="XYFRONIX '26 logo" />
       <div>
-        <div class="brand-title">
-          XYFRONIX '26
-        </div>
-
-        <div class="brand-sub">
-          AI PROMPT BATTLE
-        </div>
+        <div class="brand-title">XYFRONIX '26</div>
+        <div class="brand-sub">AI PROMPT BATTLE</div>
       </div>
-
     </div>
-
-    <!-- LIVE STATUS -->
-    <div
-      id="connection"
-      class="connection live"
-    >
-      ● LIVE
-    </div>
-
+    <div id="connection" class="connection offline">● OFFLINE</div>
   </header>
 
-
   <main>
-
-    <!-- ================================================= -->
     <!-- HOME -->
-    <!-- ================================================= -->
-
-    <section
-      id="screen-home"
-      class="screen active"
-    >
-
+    <section id="screen-home" class="screen active">
       <div class="hero card">
-
-        <div class="hero-logo-wrap">
-
-          <img
-            src="logo.png"
-            class="hero-logo"
-            alt="XYFRONIX '26"
-          >
-
-        </div>
-
-
-        <p class="eyebrow">
-          INFORMATION TECHNOLOGY
-        </p>
-
-
-        <h1>
-          THINK.
-          <span>PROMPT.</span>
-          WIN.
-        </h1>
-
-
-        <p class="hero-copy">
-          A live AI and prompt-engineering challenge with
-          real-time scoring, ranking and coordinator control.
-        </p>
-
-
+        <div class="hero-logo-wrap"><img src="logo.png" class="hero-logo" alt=""></div>
+        <p class="eyebrow">INFORMATION TECHNOLOGY</p>
+        <h1>THINK. <span>PROMPT.</span> WIN.</h1>
+        <p class="hero-copy">A live AI and prompt-engineering challenge with real-time scoring, ranking and coordinator control.</p>
         <div class="hero-actions">
-
-          <button
-            class="btn primary"
-            id="go-participant"
-            type="button"
-          >
-            PARTICIPANT
-          </button>
-
-
-          <button
-            class="btn ghost"
-            id="go-coordinator"
-            type="button"
-          >
-            COORDINATOR
-          </button>
-
+          <button class="btn primary" id="go-participant">PARTICIPANT</button>
+          <button class="btn ghost" id="go-coordinator">COORDINATOR</button>
         </div>
-
-
         <div class="mini-grid">
-
-          <div>
-            <b>20</b>
-            <span>Quiz Questions</span>
-          </div>
-
-
-          <div>
-            <b>25</b>
-            <span>Scenario Questions</span>
-          </div>
-
-
-          <div>
-            <b>LIVE</b>
-            <span>Ranking</span>
-          </div>
-
+          <div><b>20</b><span>Quiz Questions</span></div>
+          <div><b>25</b><span>Scenario Questions</span></div>
+          <div><b>LIVE</b><span>Ranking</span></div>
         </div>
-
       </div>
-
     </section>
 
-
-
-    <!-- ================================================= -->
     <!-- PARTICIPANT JOIN -->
-    <!-- ================================================= -->
-
-    <section
-      id="screen-join"
-      class="screen"
-    >
-
+    <section id="screen-join" class="screen">
       <div class="narrow card">
-
-        <button
-          class="back"
-          data-back="home"
-          type="button"
-        >
-          ← Back
-        </button>
-
-
-        <p class="eyebrow">
-          PARTICIPANT ENTRY
-        </p>
-
-
-        <h2>
-          Join the Challenge
-        </h2>
-
-
-        <p class="muted">
-          Enter the team details exactly as you want them
-          shown on the coordinator dashboard.
-        </p>
-
-
+        <button class="back" data-back="home">← Back</button>
+        <p class="eyebrow">PARTICIPANT ENTRY</p>
+        <h2>Join the Challenge</h2>
+        <p class="muted">Enter the team details exactly as you want them shown on the coordinator dashboard.</p>
         <form id="join-form">
-
-          <label>
-            Team Name
-
-            <input
-              id="team-name"
-              required
-              maxlength="60"
-              placeholder="e.g. Prompt Ninjas"
-              autocomplete="off"
-            >
-
-          </label>
-
-
-          <label>
-            College Name
-
-            <input
-              id="college-name"
-              required
-              maxlength="100"
-              placeholder="e.g. Salem College of Engineering and Technology"
-              autocomplete="organization"
-            >
-
-          </label>
-
-
-          <button
-            class="btn primary full"
-            type="submit"
-          >
-            JOIN & WAIT
-          </button>
-
+          <label>Team Name<input id="team-name" required maxlength="60" placeholder="e.g. Prompt Ninjas"></label>
+          <label>College Name<input id="college-name" required maxlength="100" placeholder="e.g. Salem College of Engineering and Technology"></label>
+          <button class="btn primary full" type="submit">JOIN & WAIT</button>
         </form>
-
-
-        <div
-          id="join-error"
-          class="error"
-        ></div>
-
+        <div id="join-error" class="error"></div>
       </div>
-
     </section>
 
-
-
-    <!-- ================================================= -->
-    <!-- WAITING ROOM -->
-    <!-- ================================================= -->
-
-    <section
-      id="screen-waiting"
-      class="screen"
-    >
-
+    <!-- WAITING -->
+    <section id="screen-waiting" class="screen">
       <div class="narrow card center">
-
         <div class="pulse-dot"></div>
-
-
-        <p class="eyebrow">
-          WAITING ROOM
-        </p>
-
-
-        <h2 id="waiting-team">
-          TEAM
-        </h2>
-
-
-        <p
-          id="waiting-college"
-          class="muted"
-        ></p>
-
-
+        <p class="eyebrow">WAITING ROOM</p>
+        <h2 id="waiting-team">TEAM</h2>
+        <p id="waiting-college" class="muted"></p>
         <div class="waiting-box">
-
-          <span id="waiting-status">
-            Waiting for coordinator…
-          </span>
-
-          <small>
-            Do not close this tab.
-          </small>
-
+          <span id="waiting-status">Waiting for coordinator…</span>
+          <small>Do not close this tab.</small>
         </div>
-
-
-        <button
-          id="demo-start"
-          class="btn ghost hidden"
-          type="button"
-        >
-          Demo Start
-        </button>
-
+        <button id="demo-start" class="btn ghost hidden">Demo Start</button>
       </div>
-
     </section>
 
-
-
-    <!-- ================================================= -->
     <!-- QUIZ -->
-    <!-- ================================================= -->
-
-    <section
-      id="screen-quiz"
-      class="screen"
-    >
-
+    <section id="screen-quiz" class="screen">
       <div class="quiz-shell">
-
-
-        <!-- QUIZ HEADER -->
-
         <div class="quiz-top card">
-
           <div>
-
-            <span
-              id="stage-chip"
-              class="chip"
-            >
-              QUIZ
-            </span>
-
-
-            <h2 id="quiz-title">
-              Quiz
-            </h2>
-
+            <span id="stage-chip" class="chip">QUIZ</span>
+            <h2 id="quiz-title">Quiz</h2>
           </div>
-
-
           <div class="timer-wrap">
-
-            <span>
-              TIME
-            </span>
-
-            <strong id="timer">
-              05:00
-            </strong>
-
+            <span>TIME</span>
+            <strong id="timer">05:00</strong>
           </div>
-
         </div>
-
-
-
-        <!-- SCORE BAR -->
 
         <div class="scorebar">
-
-          <div>
-
-            <span>
-              TEAM
-            </span>
-
-            <b id="quiz-team">
-              —
-            </b>
-
-          </div>
-
-
-          <div>
-
-            <span>
-              SCORE
-            </span>
-
-            <b id="quiz-score">
-              0
-            </b>
-
-          </div>
-
-
-          <div>
-
-            <span>
-              POSITION
-            </span>
-
-            <b id="quiz-position">
-              —
-            </b>
-
-          </div>
-
+          <div><span>TEAM</span><b id="quiz-team">—</b></div>
+          <div><span>SCORE</span><b id="quiz-score">0</b></div>
+          <div><span>POSITION</span><b id="quiz-position">—</b></div>
         </div>
-
-
-
-        <!-- QUESTION -->
 
         <div class="question card">
-
           <div class="question-meta">
-
-            <span id="question-number">
-              Question 1 / 20
-            </span>
-
-            <span id="question-marks">
-              5 marks
-            </span>
-
+            <span id="question-number">Question 1 / 20</span>
+            <span id="question-marks">5 marks</span>
           </div>
-
-
-          <h3 id="question-text">
-            Loading…
-          </h3>
-
-
-          <div
-            id="options"
-            class="options"
-          ></div>
-
-
-          <button
-            id="submit-answer"
-            class="btn primary full"
-            disabled
-            type="button"
-          >
-            SUBMIT ANSWER
-          </button>
-
-
-          <div
-            id="feedback"
-            class="feedback hidden"
-          ></div>
-
-
-          <button
-            id="next-question"
-            class="btn ghost full hidden"
-            type="button"
-          >
-            NEXT QUESTION →
-          </button>
-
+          <h3 id="question-text">Loading…</h3>
+          <div id="options" class="options"></div>
+          <button id="submit-answer" class="btn primary full" disabled>SUBMIT ANSWER</button>
+          <div id="feedback" class="feedback hidden"></div>
+          <button id="next-question" class="btn ghost full hidden">NEXT QUESTION →</button>
         </div>
-
       </div>
-
     </section>
 
-
-
-    <!-- ================================================= -->
     <!-- RESULT -->
-    <!-- ================================================= -->
-
-    <section
-      id="screen-result"
-      class="screen"
-    >
-
+    <section id="screen-result" class="screen">
       <div class="narrow card center">
-
-        <p class="eyebrow">
-          SUBMITTED
-        </p>
-
-
-        <h2 id="result-team">
-          TEAM
-        </h2>
-
-
-        <div
-          class="result-score"
-          id="result-score"
-        >
-          0
-        </div>
-
-
+        <p class="eyebrow">SUBMITTED</p>
+        <h2 id="result-team">TEAM</h2>
+        <div class="result-score" id="result-score">0</div>
         <div class="result-grid">
-
-          <div>
-
-            <span>
-              Correct
-            </span>
-
-            <b id="result-correct">
-              0
-            </b>
-
-          </div>
-
-
-          <div>
-
-            <span>
-              Position
-            </span>
-
-            <b id="result-position">
-              —
-            </b>
-
-          </div>
-
+          <div><span>Correct</span><b id="result-correct">0</b></div>
+          <div><span>Position</span><b id="result-position">—</b></div>
         </div>
-
-
-        <p
-          id="result-note"
-          class="muted"
-        ></p>
-
-
-        <button
-          class="btn ghost"
-          id="result-home"
-          type="button"
-        >
-          BACK HOME
-        </button>
-
+        <p id="result-note" class="muted"></p>
+        <button class="btn ghost" id="result-home">BACK HOME</button>
       </div>
-
     </section>
 
-
-
-    <!-- ================================================= -->
     <!-- COORDINATOR LOGIN -->
-    <!-- ================================================= -->
-
-    <section
-      id="screen-coordinator"
-      class="screen"
-    >
-
+    <section id="screen-coordinator" class="screen">
       <div class="narrow card">
-
-        <button
-          class="back"
-          data-back="home"
-          type="button"
-        >
-          ← Back
-        </button>
-
-
-        <p class="eyebrow">
-          CONTROL ROOM
-        </p>
-
-
-        <h2>
-          Coordinator Login
-        </h2>
-
-
+        <button class="back" data-back="home">← Back</button>
+        <p class="eyebrow">CONTROL ROOM</p>
+        <h2>Coordinator Login</h2>
         <form id="coord-form">
-
-          <label>
-            Coordinator Code
-
-            <input
-              id="coord-code"
-              type="password"
-              required
-              placeholder="Enter coordinator code"
-              autocomplete="off"
-            >
-
-          </label>
-
-
-          <button
-            class="btn primary full"
-            type="submit"
-          >
-            OPEN DASHBOARD
-          </button>
-
+          <label>Coordinator Code<input id="coord-code" type="password" required placeholder="Enter coordinator code"></label>
+          <button class="btn primary full" type="submit">OPEN DASHBOARD</button>
         </form>
-
-
-        <div
-          id="coord-error"
-          class="error"
-        ></div>
-
+        <div id="coord-error" class="error"></div>
       </div>
-
     </section>
 
-
-
-    <!-- ================================================= -->
-    <!-- COORDINATOR DASHBOARD -->
-    <!-- ================================================= -->
-
-    <section
-      id="screen-dashboard"
-      class="screen"
-    >
-
+    <!-- DASHBOARD -->
+    <section id="screen-dashboard" class="screen">
       <div class="dashboard">
-
-
-        <!-- DASHBOARD HEADER -->
-
         <div class="dash-head">
-
           <div>
-
-            <p class="eyebrow">
-              COORDINATOR CONTROL ROOM
-            </p>
-
-
-            <h2>
-              Live Quiz Dashboard
-            </h2>
-
+            <p class="eyebrow">COORDINATOR CONTROL ROOM</p>
+            <h2>Live Quiz Dashboard</h2>
           </div>
-
-
           <div class="dash-actions">
-
-            <button
-              id="start-a"
-              class="btn primary"
-              type="button"
-            >
-              START 20-QUESTION QUIZ
-            </button>
-
-
-            <button
-              id="start-b"
-              class="btn primary"
-              type="button"
-            >
-              START 25-SCENARIO QUIZ
-            </button>
-
-
-            <button
-              id="finish-live"
-              class="btn danger"
-              type="button"
-            >
-              FINISH CURRENT QUIZ
-            </button>
-
-
-            <button
-              id="export-csv"
-              class="btn ghost"
-              type="button"
-            >
-              EXPORT CSV
-            </button>
-
+            <button id="start-a" class="btn primary">START 20-QUESTION QUIZ</button>
+            <button id="start-b" class="btn primary">START 25-SCENARIO QUIZ</button>
+            <button id="finish-live" class="btn danger">FINISH CURRENT QUIZ</button>
+            <button id="export-csv" class="btn ghost">EXPORT CSV</button>
           </div>
-
         </div>
-
-
-
-        <!-- STATS -->
 
         <div class="stats-grid">
-
-          <div class="stat card">
-
-            <span>
-              PARTICIPANTS
-            </span>
-
-            <b id="stat-total">
-              0
-            </b>
-
-          </div>
-
-
-          <div class="stat card">
-
-            <span>
-              LIVE
-            </span>
-
-            <b id="stat-live">
-              0
-            </b>
-
-          </div>
-
-
-          <div class="stat card">
-
-            <span>
-              SUBMITTED
-            </span>
-
-            <b id="stat-submitted">
-              0
-            </b>
-
-          </div>
-
-
-          <div class="stat card">
-
-            <span>
-              STATUS
-            </span>
-
-            <b id="stat-status">
-              WAITING
-            </b>
-
-          </div>
-
+          <div class="stat card"><span>PARTICIPANTS</span><b id="stat-total">0</b></div>
+          <div class="stat card"><span>LIVE</span><b id="stat-live">0</b></div>
+          <div class="stat card"><span>SUBMITTED</span><b id="stat-submitted">0</b></div>
+          <div class="stat card"><span>STATUS</span><b id="stat-status">WAITING</b></div>
         </div>
 
-
-
-        <!-- LIVE MONITOR -->
-
         <div class="card dashboard-card">
-
           <div class="table-head">
-
             <div>
-
-              <p class="eyebrow">
-                LIVE MONITOR
-              </p>
-
-
-              <h3 id="dash-stage-title">
-                Waiting to start
-              </h3>
-
+              <p class="eyebrow">LIVE MONITOR</p>
+              <h3 id="dash-stage-title">Waiting to start</h3>
             </div>
-
-
-            <span
-              id="dash-stage-chip"
-              class="chip"
-            >
-              IDLE
-            </span>
-
+            <span id="dash-stage-chip" class="chip">IDLE</span>
           </div>
-
-
           <div class="table-wrap">
-
             <table>
-
               <thead>
-
                 <tr>
-                  <th>POS</th>
-                  <th>TEAM</th>
-                  <th>COLLEGE</th>
-                  <th>SCORE</th>
-                  <th>CORRECT</th>
-                  <th>STATUS</th>
-                  <th>TIME</th>
+                  <th>POS</th><th>TEAM</th><th>COLLEGE</th><th>SCORE</th><th>CORRECT</th><th>STATUS</th><th>TIME</th><th>ACTION</th>
                 </tr>
-
               </thead>
-
-
               <tbody id="leaderboard-body"></tbody>
-
             </table>
-
           </div>
-
         </div>
-
-
-
-        <!-- CONTROL NOTES -->
 
         <div class="card dashboard-card">
-
-          <p class="eyebrow">
-            CONTROL NOTES
-          </p>
-
-
+          <p class="eyebrow">CONTROL NOTES</p>
           <ul class="notes">
-
-            <li>
-              Click START only after all teams are inside
-              the waiting room.
-            </li>
-
-            <li>
-              Every answer gives immediate Correct/Wrong
-              feedback and updates score + position.
-            </li>
-
-            <li>
-              The timer auto-submits the current quiz when
-              it reaches zero.
-            </li>
-
-            <li>
-              The second quiz is scenario-based and can be
-              started after the first quiz is finished.
-            </li>
-
+            <li>Click START only after all teams are inside the waiting room.</li>
+            <li>Every answer gives immediate Correct/Wrong feedback and updates score + position.</li>
+            <li>The timer auto-submits the current quiz when it reaches zero.</li>
+            <li>The second quiz is scenario-based and can be started after the first quiz is finished.</li>
           </ul>
-
         </div>
-
       </div>
-
     </section>
-
   </main>
 
-
-
-  <!-- TOAST -->
-
-  <div
-    id="toast"
-    class="toast"
-  ></div>
-
-
-
-  <!-- ================================================= -->
-  <!-- JAVASCRIPT -->
-  <!-- ================================================= -->
-
-  <!-- Load Socket.IO from the SAME Render server -->
-  <script src="/socket.io/socket.io.js"></script>
-
-  <!-- App configuration -->
-  <script src="config.js"></script>
-
-  <!-- Main application -->
-  <script src="app.js"></script>
-
-
-  <!--
-    Make the status display LIVE immediately.
-    app.js can still update this when the socket connection
-    changes.
-  -->
-
-  <script>
-    document.addEventListener("DOMContentLoaded", function () {
-
-      const connection =
-        document.getElementById("connection");
-
-      if (connection) {
-
-        connection.textContent = "● LIVE";
-
-        connection.classList.remove("offline");
-        connection.classList.add("live");
-
-      }
-
-    });
-  </script>
-
+  <div id="toast" class="toast"></div>
+  <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
+  <script src="/config.js"></script>
+  <script src="/app.js"></script>
 </body>
 </html>
