@@ -1,321 +1,2395 @@
-const API = (window.XYF_CONFIG?.BACKEND_URL || window.location.origin).replace(/\/$/, "");
-const socket = io(API, { transports: ["websocket", "polling"] });
+/* =========================================================
+   XYFRONIX '26 — AI PROMPT BATTLE
+   FULL FRONTEND APPLICATION
+========================================================= */
+
+const API = (
+  window.XYF_CONFIG?.BACKEND_URL ||
+  window.location.origin
+).replace(/\/$/, "");
+
+
+/* =========================================================
+   SOCKET CONNECTION
+========================================================= */
+
+const socket = io(API, {
+  transports: ["websocket", "polling"],
+  reconnection: true,
+  reconnectionAttempts: Infinity,
+  reconnectionDelay: 1000
+});
+
+
+/* =========================================================
+   GLOBAL STATE
+========================================================= */
 
 let state = {
   participant: null,
+
   stage: null,
+
   quiz: null,
+
   questionIndex: 0,
+
   selected: null,
+
   answered: false,
+
   score: 0,
+
   position: null,
+
   timer: null,
+
   timeLeft: 0
 };
 
+
+/* =========================================================
+   HELPERS
+========================================================= */
+
 const $ = (id) => document.getElementById(id);
-const screens = ["home","join","waiting","quiz","result","coordinator","dashboard"];
 
-function show(name){
-  screens.forEach(s => $("screen-"+s).classList.toggle("active", s === name));
-  window.scrollTo({top:0, behavior:"smooth"});
-}
-function toast(msg){
-  const el = $("toast"); el.textContent = msg; el.classList.add("show");
-  setTimeout(()=>el.classList.remove("show"),2200);
-}
-function setConnection(online){
-  const el=$("connection");
-  el.textContent=online ? "● LIVE CONNECTED" : "● OFFLINE";
-  el.className="connection "+(online?"online":"offline");
-}
-function esc(s){ return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c])); }
+const screens = [
+  "home",
+  "join",
+  "waiting",
+  "quiz",
+  "result",
+  "coordinator",
+  "dashboard"
+];
 
-socket.on("connect", ()=>setConnection(true));
-socket.on("disconnect", ()=>setConnection(false));
 
-$("go-participant").onclick=()=>show("join");
-$("go-coordinator").onclick=()=>show("coordinator");
-$("result-home").onclick=()=>location.reload();
-document.querySelectorAll("[data-back]").forEach(b=>b.onclick=()=>show(b.dataset.back));
+function show(name) {
 
-$("join-form").addEventListener("submit", async (e)=>{
-  e.preventDefault();
-  $("join-error").textContent="";
-  const teamName=$("team-name").value.trim();
-  const collegeName=$("college-name").value.trim();
-  try{
-    const r=await fetch(API+"/api/participant/join",{
-      method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({teamName,collegeName})
-    });
-    const data=await r.json();
-    if(!r.ok) throw new Error(data.error||"Join failed");
-    state.participant=data.participant;
-    state.score=0; state.position=null;
-    sessionStorage.setItem("xyf_participant_id", state.participant.id);
-    $("waiting-team").textContent=teamName.toUpperCase();
-    $("waiting-college").textContent=collegeName;
-    show("waiting");
-    socket.emit("participant:join-room",{participantId:state.participant.id});
-  }catch(err){ $("join-error").textContent=err.message; }
-});
+  screens.forEach((screen) => {
 
-socket.on("quiz:started", (payload)=>{
-  if(!state.participant) return;
-  if(payload.participantIds && !payload.participantIds.includes(state.participant.id)) return;
-  startStage(payload.stage, payload.durationSeconds);
-});
+    const el = $("screen-" + screen);
 
-socket.on("quiz:finished", (payload)=>{
-  if(!state.participant) return;
-  finishParticipant(payload.final || false);
-});
-
-socket.on("participant:update", (p)=>{
-  if(!state.participant || p.id !== state.participant.id) return;
-  state.participant=p;
-  if(state.stage==="A") state.score=p.stage_a_score||0;
-  if(state.stage==="B") state.score=p.stage_b_score||0;
-  $("quiz-score").textContent=state.score;
-});
-
-async function startStage(stage, durationSeconds){
-  state.stage=stage;
-  state.questionIndex=0; state.selected=null; state.answered=false;
-  state.score=stage==="A"?(state.participant.stage_a_score||0):(state.participant.stage_b_score||0);
-  state.timeLeft=durationSeconds;
-  $("quiz-team").textContent=state.participant.team_name;
-  $("stage-chip").textContent=stage==="A"?"20 QUESTION QUIZ":"25 SCENARIO QUIZ";
-  $("quiz-title").textContent=stage==="A"?"AI Prompt Challenge":"AI Scenario Challenge";
-  $("quiz-score").textContent=state.score;
-  $("feedback").className="feedback hidden";
-  $("next-question").classList.add("hidden");
-  show("quiz");
-  await loadQuestion();
-  startTimer();
-}
-
-async function loadQuestion(){
-  state.selected=null; state.answered=false;
-  $("submit-answer").disabled=true;
-  $("feedback").className="feedback hidden";
-  $("next-question").classList.add("hidden");
-  const r=await fetch(`${API}/api/quiz/${state.stage}/question/${state.questionIndex}?participantId=${encodeURIComponent(state.participant.id)}`);
-  const data=await r.json();
-  if(!r.ok){ toast(data.error||"Question load failed"); return; }
-  state.quiz=data;
-  $("question-number").textContent=`Question ${state.questionIndex+1} / ${data.total}`;
-  $("question-marks").textContent=`${data.marks} marks`;
-  $("question-text").textContent=data.question;
-  $("options").innerHTML=data.options.map((opt,i)=>`
-    <label class="option">
-      <input type="radio" name="answer" value="${i}">
-      <span class="letter">${String.fromCharCode(65+i)}</span>
-      <span class="option-text">${esc(opt)}</span>
-    </label>`).join("");
-  document.querySelectorAll(".option").forEach((el,i)=>{
-    el.onclick=()=>{
-      if(state.answered) return;
-      state.selected=i;
-      document.querySelectorAll(".option").forEach(x=>x.classList.remove("selected"));
-      el.classList.add("selected");
-      $("submit-answer").disabled=false;
-    };
-  });
-}
-
-$("submit-answer").onclick=async()=>{
-  if(state.selected===null || state.answered) return;
-  $("submit-answer").disabled=true;
-  try{
-    const r=await fetch(API+"/api/quiz/answer",{
-      method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({
-        participantId:state.participant.id, stage:state.stage,
-        questionIndex:state.questionIndex, selectedOption:state.quiz.optionMap[state.selected]
-      })
-    });
-    const data=await r.json();
-    if(!r.ok) throw new Error(data.error||"Submission failed");
-    state.answered=true;
-    state.score=data.score;
-    state.position=data.position;
-    $("quiz-score").textContent=data.score;
-    $("quiz-position").textContent=ordinal(data.position);
-    showFeedback(data);
-  }catch(err){
-    $("submit-answer").disabled=false; toast(err.message);
-  }
-};
-
-function showFeedback(data){
-  const f=$("feedback");
-  f.className="feedback "+(data.correct?"correct":"wrong");
-  f.innerHTML=`<b>${data.correct?"✓ CORRECT":"✕ WRONG"} · +${data.marksAwarded} marks</b>
-    ${data.correct?"":"<div>Correct answer: <strong>"+esc(data.correctAnswer)+"</strong></div>"}
-    <small>Current score: ${data.score} · Current position: ${ordinal(data.position)}</small>`;
-  $("next-question").classList.remove("hidden");
-  $("submit-answer").classList.add("hidden");
-}
-$("next-question").onclick=async()=>{
-  if(state.questionIndex >= state.quiz.total-1){
-    finishParticipant(false); return;
-  }
-  state.questionIndex++;
-  $("submit-answer").classList.remove("hidden");
-  await loadQuestion();
-};
-
-function startTimer(){
-  clearInterval(state.timer);
-  renderTimer();
-  state.timer=setInterval(()=>{
-    state.timeLeft--;
-    renderTimer();
-    if(state.timeLeft<=0){
-      clearInterval(state.timer);
-      autoFinish();
+    if (el) {
+      el.classList.toggle(
+        "active",
+        screen === name
+      );
     }
-  },1000);
-}
-function renderTimer(){
-  const m=Math.floor(state.timeLeft/60), s=state.timeLeft%60;
-  const el=$("timer");
-  el.textContent=`${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`;
-  el.classList.toggle("warning",state.timeLeft<=60 && state.timeLeft>20);
-  el.classList.toggle("danger",state.timeLeft<=20);
-}
-async function autoFinish(){
-  try{
-    await fetch(API+"/api/quiz/finish",{
-      method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({participantId:state.participant.id,stage:state.stage})
-    });
-  }catch(e){}
-  finishParticipant(false);
-}
-async function finishParticipant(final){
-  clearInterval(state.timer);
-  try{
-    const r=await fetch(`${API}/api/participant/${state.participant.id}/summary`);
-    const data=await r.json();
-    const s=state.stage==="A"?data.stageA:data.stageB;
-    $("result-team").textContent=state.participant.team_name;
-    $("result-score").textContent=s.score;
-    $("result-correct").textContent=s.correct;
-    $("result-position").textContent=ordinal(s.position);
-    $("result-note").textContent=final ? "Event completed." : (state.stage==="A" ? "Waiting for the next quiz from the coordinator." : "Your submission has been recorded.");
-    show("result");
-  }catch(e){ show("result"); }
+
+  });
+
+  window.scrollTo({
+    top: 0,
+    behavior: "smooth"
+  });
 }
 
-function ordinal(n){
-  if(!n) return "—";
-  const v=n%100;
-  if(v>=11 && v<=13) return n+"th";
-  return n+(["th","st","nd","rd"][Math.min(n%10,3)]||"th");
+
+function toast(message) {
+
+  const el = $("toast");
+
+  if (!el) return;
+
+  el.textContent = message;
+
+  el.classList.add("show");
+
+  setTimeout(() => {
+    el.classList.remove("show");
+  }, 2500);
 }
 
-/* Coordinator */
-$("coord-form").addEventListener("submit", async(e)=>{
-  e.preventDefault(); $("coord-error").textContent="";
-  try{
-    const r=await fetch(API+"/api/coordinator/login",{
-      method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({code:$("coord-code").value.trim()})
+
+function setConnection(online) {
+
+  const el = $("connection");
+
+  if (!el) return;
+
+  if (online) {
+
+    el.textContent = "● LIVE CONNECTED";
+
+    el.className = "connection online";
+
+  } else {
+
+    el.textContent = "● OFFLINE";
+
+    el.className = "connection offline";
+
+  }
+
+}
+
+
+function esc(value) {
+
+  return String(value ?? "")
+    .replace(/[&<>"']/g, (char) => {
+
+      const map = {
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#039;"
+      };
+
+      return map[char];
+
     });
-    const data=await r.json();
-    if(!r.ok) throw new Error(data.error||"Invalid code");
-    sessionStorage.setItem("xyf_coord_token",data.token);
-    show("dashboard");
-    loadDashboard();
-    socket.emit("coordinator:join");
-  }catch(err){ $("coord-error").textContent=err.message; }
+
+}
+
+
+function ordinal(number) {
+
+  if (!number) return "—";
+
+  const n = Number(number);
+
+  const lastTwo = n % 100;
+
+  if (lastTwo >= 11 && lastTwo <= 13) {
+    return n + "th";
+  }
+
+  const last = n % 10;
+
+  if (last === 1) return n + "st";
+  if (last === 2) return n + "nd";
+  if (last === 3) return n + "rd";
+
+  return n + "th";
+}
+
+
+/* =========================================================
+   SAFE JSON FETCH
+   Prevents:
+   Unexpected token '<'
+========================================================= */
+
+async function readResponse(response) {
+
+  const text = await response.text();
+
+  if (!text) {
+    return {};
+  }
+
+  try {
+
+    return JSON.parse(text);
+
+  } catch (error) {
+
+    console.error(
+      "Server returned non-JSON:",
+      text.substring(0, 500)
+    );
+
+    throw new Error(
+      "Server API error. Please check the Render server/API route."
+    );
+
+  }
+
+}
+
+
+/* =========================================================
+   SOCKET EVENTS
+========================================================= */
+
+socket.on("connect", () => {
+
+  console.log("Socket connected:", socket.id);
+
+  setConnection(true);
+
+  if (state.participant?.id) {
+
+    socket.emit(
+      "participant:join-room",
+      {
+        participantId: state.participant.id
+      }
+    );
+
+  }
+
 });
 
-async function authFetch(url,opts={}){
-  opts.headers={...(opts.headers||{}),"x-coordinator-token":sessionStorage.getItem("xyf_coord_token")||""};
-  return fetch(API+url,opts);
-}
-async function loadDashboard(){
-  const r=await authFetch("/api/coordinator/state"); if(!r.ok){show("coordinator");return}
-  const data=await r.json(); renderDashboard(data);
-}
-socket.on("dashboard:update", data=>renderDashboard(data));
 
-function renderDashboard(data){
-  const p=data.participants||[];
-  $("stat-total").textContent=p.length;
-  $("stat-live").textContent=p.filter(x=>x.status==="live").length;
-  $("stat-submitted").textContent=p.filter(x=>x.status==="submitted").length;
-  $("stat-status").textContent=(data.quiz.status||"waiting").toUpperCase();
-  $("dash-stage-title").textContent=data.quiz.activeStage==="A"?"20 Question Quiz":data.quiz.activeStage==="B"?"25 Scenario Quiz":"Waiting to start";
-  $("dash-stage-chip").textContent=data.quiz.activeStage ? `STAGE ${data.quiz.activeStage}` : "IDLE";
+socket.on("disconnect", () => {
 
-  const stage=data.quiz.activeStage;
-  const list=[...p].sort((a,b)=>{
-    const as=stage==="B"?a.stage_b_score:a.stage_a_score;
-    const bs=stage==="B"?b.stage_b_score:b.stage_a_score;
-    return bs-as || new Date(a.joined_at)-new Date(b.joined_at);
+  console.warn("Socket disconnected");
+
+  setConnection(false);
+
+});
+
+
+socket.on("connect_error", (error) => {
+
+  console.error(
+    "Socket connection error:",
+    error
+  );
+
+  setConnection(false);
+
+});
+
+
+/* =========================================================
+   HOME BUTTONS
+========================================================= */
+
+if ($("go-participant")) {
+
+  $("go-participant").onclick = () => {
+    show("join");
+  };
+
+}
+
+
+if ($("go-coordinator")) {
+
+  $("go-coordinator").onclick = () => {
+    show("coordinator");
+  };
+
+}
+
+
+if ($("result-home")) {
+
+  $("result-home").onclick = () => {
+    sessionStorage.removeItem("xyf_participant_id");
+    location.reload();
+  };
+
+}
+
+
+document
+  .querySelectorAll("[data-back]")
+  .forEach((button) => {
+
+    button.onclick = () => {
+
+      show(button.dataset.back);
+
+    };
+
   });
-  $("leaderboard-body").innerHTML=list.map((x,i)=>{
-    const score=stage==="B"?x.stage_b_score:x.stage_a_score;
-    const correct=stage==="B"?x.stage_b_correct:x.stage_a_correct;
-    const used=stage==="B"?x.stage_b_used:x.stage_a_used;
-    return `<tr>
-      <td>${i+1}</td><td>${esc(x.team_name)}</td><td>${esc(x.college_name)}</td>
-      <td>${score}</td><td>${correct}/${used}</td>
-      <td class="status-${x.status}">${x.status.toUpperCase()}</td>
-      <td>${x.completed_at ? new Date(x.completed_at).toLocaleTimeString() : "—"}</td>
-      <td><button class="btn danger btn-delete" data-delete-id="${esc(x.id)}" type="button">DELETE</button></td>
-    </tr>`;
-  }).join("");
-  document.querySelectorAll("[data-delete-id]").forEach(btn => {
-    btn.onclick = () => deleteParticipant(btn.dataset.deleteId);
-  });
+
+
+/* =========================================================
+   PARTICIPANT JOIN
+========================================================= */
+
+if ($("join-form")) {
+
+  $("join-form").addEventListener(
+    "submit",
+    async (event) => {
+
+      event.preventDefault();
+
+      $("join-error").textContent = "";
+
+      const teamName =
+        $("team-name").value.trim();
+
+      const collegeName =
+        $("college-name").value.trim();
+
+
+      if (!teamName || !collegeName) {
+
+        $("join-error").textContent =
+          "Please enter team name and college name.";
+
+        return;
+
+      }
+
+
+      try {
+
+        const response = await fetch(
+          API + "/api/participant/join",
+          {
+            method: "POST",
+
+            headers: {
+              "Content-Type": "application/json"
+            },
+
+            body: JSON.stringify({
+              teamName,
+              collegeName
+            })
+          }
+        );
+
+
+        const data =
+          await readResponse(response);
+
+
+        if (!response.ok) {
+
+          throw new Error(
+            data.error || "Join failed"
+          );
+
+        }
+
+
+        state.participant =
+          data.participant;
+
+        state.score = 0;
+
+        state.position = null;
+
+
+        sessionStorage.setItem(
+          "xyf_participant_id",
+          state.participant.id
+        );
+
+
+        $("waiting-team").textContent =
+          teamName.toUpperCase();
+
+        $("waiting-college").textContent =
+          collegeName;
+
+
+        $("waiting-status").textContent =
+          "Waiting for coordinator…";
+
+
+        show("waiting");
+
+
+        socket.emit(
+          "participant:join-room",
+          {
+            participantId:
+              state.participant.id
+          }
+        );
+
+
+        toast("Joined successfully");
+
+      } catch (error) {
+
+        console.error(
+          "Join error:",
+          error
+        );
+
+        $("join-error").textContent =
+          error.message;
+
+      }
+
+    }
+  );
+
 }
 
-async function deleteParticipant(id){
-  if(!confirm("Delete this participant from the live monitor? This removes their stored answers/results too.")) return;
-  const r=await authFetch(`/api/coordinator/participant/${encodeURIComponent(id)}`,{method:"DELETE"});
-  const data=await r.json().catch(()=>({}));
-  if(!r.ok){ toast(data.error||"Delete failed"); return; }
-  toast("Participant deleted");
-}
-$("start-a").onclick=()=>startQuizCoordinator("A");
-$("start-b").onclick=()=>startQuizCoordinator("B");
-$("finish-live").onclick=async()=>{
-  if(!confirm("Finish the current quiz for all participants?")) return;
-  await authFetch("/api/coordinator/finish",{method:"POST"});
-};
-async function startQuizCoordinator(stage){
-  const r=await authFetch("/api/coordinator/start",{
-    method:"POST",headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({stage})
-  });
-  const data=await r.json();
-  if(!r.ok){toast(data.error||"Could not start");return}
-  toast("Quiz started for all waiting participants");
-}
-$("export-csv").onclick=async()=>{
-  const r=await authFetch("/api/coordinator/export");
-  if(!r.ok){toast("Export failed");return}
-  const blob=await r.blob();
-  const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download="xyfronix-ai-prompt-battle-results.csv"; a.click(); URL.revokeObjectURL(a.href);
-};
 
-/* Restore a participant session after refresh */
-(async()=>{
-  const id=sessionStorage.getItem("xyf_participant_id");
-  if(!id) return;
-  try{
-    const r=await fetch(`${API}/api/participant/${id}`);
-    if(!r.ok) return;
-    state.participant=await r.json();
-    $("waiting-team").textContent=state.participant.team_name.toUpperCase();
-    $("waiting-college").textContent=state.participant.college_name;
-    socket.emit("participant:join-room",{participantId:id});
-  }catch(e){}
+/* =========================================================
+   QUIZ STARTED
+========================================================= */
+
+socket.on(
+  "quiz:started",
+  (payload) => {
+
+    console.log(
+      "Quiz started:",
+      payload
+    );
+
+
+    if (!state.participant) {
+      return;
+    }
+
+
+    if (
+      payload.participantIds &&
+      !payload.participantIds.includes(
+        state.participant.id
+      )
+    ) {
+
+      return;
+
+    }
+
+
+    startStage(
+      payload.stage,
+      payload.durationSeconds
+    );
+
+  }
+);
+
+
+/* =========================================================
+   QUIZ FINISHED
+========================================================= */
+
+socket.on(
+  "quiz:finished",
+  (payload) => {
+
+    console.log(
+      "Quiz finished:",
+      payload
+    );
+
+
+    if (!state.participant) {
+      return;
+    }
+
+
+    if (state.stage) {
+
+      finishParticipant(
+        payload?.final || false
+      );
+
+    }
+
+  }
+);
+
+
+/* =========================================================
+   PARTICIPANT LIVE UPDATE
+========================================================= */
+
+socket.on(
+  "participant:update",
+  (participant) => {
+
+    if (!state.participant) {
+      return;
+    }
+
+
+    if (
+      participant.id !==
+      state.participant.id
+    ) {
+
+      return;
+
+    }
+
+
+    state.participant =
+      participant;
+
+
+    if (state.stage === "A") {
+
+      state.score =
+        participant.stage_a_score || 0;
+
+    }
+
+
+    if (state.stage === "B") {
+
+      state.score =
+        participant.stage_b_score || 0;
+
+    }
+
+
+    if ($("quiz-score")) {
+
+      $("quiz-score").textContent =
+        state.score;
+
+    }
+
+  }
+);
+
+
+/* =========================================================
+   START STAGE
+========================================================= */
+
+async function startStage(
+  stage,
+  durationSeconds
+) {
+
+  clearInterval(state.timer);
+
+
+  state.stage = stage;
+
+  state.questionIndex = 0;
+
+  state.selected = null;
+
+  state.answered = false;
+
+
+  state.score =
+    stage === "A"
+      ? (state.participant.stage_a_score || 0)
+      : (state.participant.stage_b_score || 0);
+
+
+  state.timeLeft =
+    Number(durationSeconds || (
+      stage === "A"
+        ? 300
+        : 600
+    ));
+
+
+  $("quiz-team").textContent =
+    state.participant.team_name;
+
+
+  $("stage-chip").textContent =
+    stage === "A"
+      ? "20 QUESTION QUIZ"
+      : "25 SCENARIO QUIZ";
+
+
+  $("quiz-title").textContent =
+    stage === "A"
+      ? "AI Prompt Challenge"
+      : "AI Scenario Challenge";
+
+
+  $("quiz-score").textContent =
+    state.score;
+
+
+  $("quiz-position").textContent =
+    "—";
+
+
+  $("feedback").className =
+    "feedback hidden";
+
+
+  $("feedback").innerHTML = "";
+
+
+  $("next-question").classList.add(
+    "hidden"
+  );
+
+
+  $("submit-answer").classList.remove(
+    "hidden"
+  );
+
+
+  show("quiz");
+
+
+  await loadQuestion();
+
+  startTimer();
+
+}
+
+
+/* =========================================================
+   LOAD QUESTION
+========================================================= */
+
+async function loadQuestion() {
+
+  state.selected = null;
+
+  state.answered = false;
+
+
+  const submitButton =
+    $("submit-answer");
+
+  const nextButton =
+    $("next-question");
+
+  const feedback =
+    $("feedback");
+
+
+  submitButton.disabled = true;
+
+  submitButton.textContent =
+    "SUBMIT ANSWER";
+
+  submitButton.classList.remove(
+    "hidden"
+  );
+
+
+  nextButton.classList.add(
+    "hidden"
+  );
+
+  nextButton.disabled = true;
+
+  nextButton.textContent =
+    "NEXT QUESTION →";
+
+
+  feedback.className =
+    "feedback hidden";
+
+  feedback.innerHTML = "";
+
+
+  try {
+
+    const response =
+      await fetch(
+        `${API}/api/quiz/${state.stage}/question/${state.questionIndex}?participantId=${encodeURIComponent(
+          state.participant.id
+        )}`
+      );
+
+
+    const data =
+      await readResponse(response);
+
+
+    if (!response.ok) {
+
+      throw new Error(
+        data.error ||
+        "Question loading failed"
+      );
+
+    }
+
+
+    console.log(
+      "Question:",
+      data
+    );
+
+
+    state.quiz = data;
+
+
+    const total =
+      data.total ??
+      data.totalQuestions ??
+      state.stage === "A"
+        ? 20
+        : 25;
+
+
+    $("question-number").textContent =
+      `Question ${state.questionIndex + 1} / ${total}`;
+
+
+    $("question-marks").textContent =
+      `${data.marks} marks`;
+
+
+    $("question-text").textContent =
+      data.question;
+
+
+    renderOptions(
+      data.options || []
+    );
+
+
+    // Scroll to question
+    window.scrollTo({
+      top: 0,
+      behavior: "smooth"
+    });
+
+
+  } catch (error) {
+
+    console.error(
+      "Question load error:",
+      error
+    );
+
+    toast(error.message);
+
+  }
+
+}
+
+
+/* =========================================================
+   RENDER OPTIONS
+========================================================= */
+
+function renderOptions(options) {
+
+  const container =
+    $("options");
+
+
+  container.innerHTML = "";
+
+
+  options.forEach(
+    (option, index) => {
+
+      const label =
+        document.createElement("label");
+
+
+      label.className =
+        "option";
+
+
+      label.innerHTML = `
+        <input
+          type="radio"
+          name="answer"
+          value="${index}"
+        >
+
+        <span class="letter">
+          ${String.fromCharCode(65 + index)}
+        </span>
+
+        <span class="option-text">
+          ${esc(option)}
+        </span>
+      `;
+
+
+      label.addEventListener(
+        "click",
+        () => {
+
+          if (state.answered) {
+            return;
+          }
+
+
+          state.selected =
+            index;
+
+
+          document
+            .querySelectorAll(".option")
+            .forEach(
+              (item) => {
+
+                item.classList.remove(
+                  "selected"
+                );
+
+              }
+            );
+
+
+          label.classList.add(
+            "selected"
+          );
+
+
+          const radio =
+            label.querySelector(
+              'input[type="radio"]'
+            );
+
+
+          if (radio) {
+            radio.checked = true;
+          }
+
+
+          $("submit-answer").disabled =
+            false;
+
+        }
+      );
+
+
+      container.appendChild(
+        label
+      );
+
+    }
+  );
+
+}
+
+
+/* =========================================================
+   SUBMIT ANSWER
+========================================================= */
+
+$("submit-answer").onclick =
+  async () => {
+
+    if (
+      state.selected === null ||
+      state.answered
+    ) {
+
+      return;
+
+    }
+
+
+    const submitButton =
+      $("submit-answer");
+
+
+    submitButton.disabled =
+      true;
+
+
+    submitButton.textContent =
+      "SUBMITTING...";
+
+
+    try {
+
+      /*
+        IMPORTANT:
+
+        optionMap converts the displayed
+        randomized position back to
+        original A/B/C/D answer.
+      */
+
+      const originalAnswer =
+        state.quiz?.optionMap?.[
+          state.selected
+        ];
+
+
+      /*
+        Fallback for old backend
+      */
+
+      const selectedOption =
+        originalAnswer ??
+        String.fromCharCode(
+          65 + state.selected
+        );
+
+
+      console.log(
+        "Submitting:",
+        {
+          questionIndex:
+            state.questionIndex,
+
+          displayedIndex:
+            state.selected,
+
+          selectedOption
+        }
+      );
+
+
+      const response =
+        await fetch(
+          API + "/api/quiz/answer",
+          {
+            method: "POST",
+
+            headers: {
+              "Content-Type":
+                "application/json"
+            },
+
+            body: JSON.stringify({
+
+              participantId:
+                state.participant.id,
+
+              stage:
+                state.stage,
+
+              questionIndex:
+                state.questionIndex,
+
+              selectedOption:
+                selectedOption
+
+            })
+          }
+        );
+
+
+      const data =
+        await readResponse(response);
+
+
+      if (!response.ok) {
+
+        throw new Error(
+          data.error ||
+          "Answer submission failed"
+        );
+
+      }
+
+
+      /*
+        ANSWER SUCCESS
+      */
+
+      state.answered = true;
+
+
+      state.score =
+        Number(
+          data.score ??
+          state.score
+        );
+
+
+      state.position =
+        data.position ??
+        state.position;
+
+
+      $("quiz-score").textContent =
+        state.score;
+
+
+      $("quiz-position").textContent =
+        ordinal(state.position);
+
+
+      /*
+        Disable options
+      */
+
+      document
+        .querySelectorAll(".option")
+        .forEach(
+          (option) => {
+
+            option.classList.add(
+              "disabled"
+            );
+
+            option.style.pointerEvents =
+              "none";
+
+          }
+        );
+
+
+      /*
+        Show feedback
+      */
+
+      showFeedback(data);
+
+
+    } catch (error) {
+
+      console.error(
+        "Answer submission error:",
+        error
+      );
+
+
+      submitButton.disabled =
+        false;
+
+
+      submitButton.textContent =
+        "SUBMIT ANSWER";
+
+
+      toast(error.message);
+
+    }
+
+  };
+
+
+/* =========================================================
+   SHOW FEEDBACK
+========================================================= */
+
+function showFeedback(data) {
+
+  const feedback =
+    $("feedback");
+
+
+  const correct =
+    Boolean(data.correct);
+
+
+  const marks =
+    Number(
+      data.marksAwarded ??
+      data.marks ??
+      0
+    );
+
+
+  const score =
+    Number(
+      data.score ??
+      state.score
+    );
+
+
+  const position =
+    data.position ??
+    state.position;
+
+
+  if (correct) {
+
+    feedback.className =
+      "feedback correct";
+
+
+    feedback.innerHTML = `
+      <b>✓ CORRECT · +${marks} marks</b>
+
+      <small>
+        Current score: ${score}
+        · Current position: ${ordinal(position)}
+      </small>
+    `;
+
+  } else {
+
+    const answer =
+      data.correctAnswer ??
+      "See coordinator";
+
+
+    feedback.className =
+      "feedback wrong";
+
+
+    feedback.innerHTML = `
+      <b>✕ WRONG · +0 marks</b>
+
+      <div>
+        Correct answer:
+        <strong>${esc(answer)}</strong>
+      </div>
+
+      <small>
+        Current score: ${score}
+        · Current position: ${ordinal(position)}
+      </small>
+    `;
+
+  }
+
+
+  /*
+    Hide submit button
+  */
+
+  $("submit-answer").classList.add(
+    "hidden"
+  );
+
+
+  /*
+    SHOW NEXT BUTTON
+  */
+
+  const nextButton =
+    $("next-question");
+
+
+  const total =
+    state.quiz?.total ??
+    state.quiz?.totalQuestions ??
+    (state.stage === "A" ? 20 : 25);
+
+
+  if (
+    state.questionIndex <
+    total - 1
+  ) {
+
+    nextButton.textContent =
+      "NEXT QUESTION →";
+
+  } else {
+
+    nextButton.textContent =
+      "FINISH QUIZ →";
+
+  }
+
+
+  nextButton.disabled =
+    false;
+
+
+  nextButton.classList.remove(
+    "hidden"
+  );
+
+
+  /*
+    Make sure user can see it
+  */
+
+  setTimeout(() => {
+
+    nextButton.scrollIntoView({
+      behavior: "smooth",
+      block: "center"
+    });
+
+  }, 150);
+
+}
+
+
+/* =========================================================
+   NEXT QUESTION
+========================================================= */
+
+$("next-question").onclick =
+  async () => {
+
+    if (!state.answered) {
+      return;
+    }
+
+
+    const nextButton =
+      $("next-question");
+
+
+    const total =
+      state.quiz?.total ??
+      state.quiz?.totalQuestions ??
+      (state.stage === "A" ? 20 : 25);
+
+
+    /*
+      LAST QUESTION
+    */
+
+    if (
+      state.questionIndex >=
+      total - 1
+    ) {
+
+      nextButton.disabled =
+        true;
+
+      nextButton.textContent =
+        "FINISHING...";
+
+
+      await finishQuiz();
+
+
+      return;
+
+    }
+
+
+    /*
+      NEXT QUESTION
+    */
+
+    nextButton.disabled =
+      true;
+
+
+    nextButton.textContent =
+      "LOADING...";
+
+
+    state.questionIndex++;
+
+    state.selected = null;
+
+    state.answered = false;
+
+
+    await loadQuestion();
+
+
+    window.scrollTo({
+      top: 0,
+      behavior: "smooth"
+    });
+
+  };
+
+
+/* =========================================================
+   FINISH QUIZ
+========================================================= */
+
+async function finishQuiz() {
+
+  clearInterval(state.timer);
+
+
+  try {
+
+    const response =
+      await fetch(
+        API + "/api/quiz/finish",
+        {
+          method: "POST",
+
+          headers: {
+            "Content-Type":
+              "application/json"
+          },
+
+          body: JSON.stringify({
+
+            participantId:
+              state.participant.id,
+
+            stage:
+              state.stage
+
+          })
+        }
+      );
+
+
+    const data =
+      await readResponse(response);
+
+
+    if (!response.ok) {
+
+      throw new Error(
+        data.error ||
+        "Quiz finish failed"
+      );
+
+    }
+
+
+  } catch (error) {
+
+    console.error(
+      "Finish error:",
+      error
+    );
+
+  }
+
+
+  await finishParticipant(false);
+
+}
+
+
+/* =========================================================
+   TIMER
+========================================================= */
+
+function startTimer() {
+
+  clearInterval(state.timer);
+
+
+  renderTimer();
+
+
+  state.timer =
+    setInterval(
+      () => {
+
+        state.timeLeft--;
+
+
+        renderTimer();
+
+
+        if (
+          state.timeLeft <= 0
+        ) {
+
+          clearInterval(
+            state.timer
+          );
+
+
+          autoFinish();
+
+        }
+
+      },
+      1000
+    );
+
+}
+
+
+function renderTimer() {
+
+  const minutes =
+    Math.floor(
+      state.timeLeft / 60
+    );
+
+
+  const seconds =
+    state.timeLeft % 60;
+
+
+  const timer =
+    $("timer");
+
+
+  if (!timer) return;
+
+
+  timer.textContent =
+    `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+
+
+  timer.classList.toggle(
+    "warning",
+    state.timeLeft <= 60 &&
+    state.timeLeft > 20
+  );
+
+
+  timer.classList.toggle(
+    "danger",
+    state.timeLeft <= 20
+  );
+
+}
+
+
+/* =========================================================
+   AUTO FINISH
+========================================================= */
+
+async function autoFinish() {
+
+  toast(
+    "Time up! Quiz is being submitted..."
+  );
+
+
+  try {
+
+    const response =
+      await fetch(
+        API + "/api/quiz/finish",
+        {
+          method: "POST",
+
+          headers: {
+            "Content-Type":
+              "application/json"
+          },
+
+          body: JSON.stringify({
+
+            participantId:
+              state.participant.id,
+
+            stage:
+              state.stage
+
+          })
+        }
+      );
+
+
+    await readResponse(response);
+
+  } catch (error) {
+
+    console.error(
+      "Auto finish error:",
+      error
+    );
+
+  }
+
+
+  await finishParticipant(false);
+
+}
+
+
+/* =========================================================
+   PARTICIPANT RESULT
+========================================================= */
+
+async function finishParticipant(
+  final
+) {
+
+  clearInterval(state.timer);
+
+
+  try {
+
+    const response =
+      await fetch(
+        `${API}/api/participant/${state.participant.id}/summary`
+      );
+
+
+    const data =
+      await readResponse(response);
+
+
+    if (!response.ok) {
+
+      throw new Error(
+        data.error ||
+        "Result loading failed"
+      );
+
+    }
+
+
+    const summary =
+      state.stage === "A"
+        ? data.stageA
+        : data.stageB;
+
+
+    $("result-team").textContent =
+      state.participant.team_name;
+
+
+    $("result-score").textContent =
+      summary.score ?? 0;
+
+
+    $("result-correct").textContent =
+      summary.correct ?? 0;
+
+
+    $("result-position").textContent =
+      ordinal(summary.position);
+
+
+    if (final) {
+
+      $("result-note").textContent =
+        "Event completed.";
+
+    } else if (
+      state.stage === "A"
+    ) {
+
+      $("result-note").textContent =
+        "Waiting for the next quiz from the coordinator.";
+
+    } else {
+
+      $("result-note").textContent =
+        "Your submission has been recorded.";
+
+    }
+
+
+    show("result");
+
+
+  } catch (error) {
+
+    console.error(
+      "Result error:",
+      error
+    );
+
+
+    $("result-team").textContent =
+      state.participant.team_name;
+
+
+    $("result-note").textContent =
+      "Your quiz has been submitted.";
+
+
+    show("result");
+
+  }
+
+}
+
+
+/* =========================================================
+   COORDINATOR LOGIN
+========================================================= */
+
+if ($("coord-form")) {
+
+  $("coord-form").addEventListener(
+    "submit",
+    async (event) => {
+
+      event.preventDefault();
+
+
+      $("coord-error").textContent =
+        "";
+
+
+      const code =
+        $("coord-code").value.trim();
+
+
+      try {
+
+        const response =
+          await fetch(
+            API +
+            "/api/coordinator/login",
+            {
+              method: "POST",
+
+              headers: {
+                "Content-Type":
+                  "application/json"
+              },
+
+              body: JSON.stringify({
+                code
+              })
+            }
+          );
+
+
+        const data =
+          await readResponse(response);
+
+
+        if (!response.ok) {
+
+          throw new Error(
+            data.error ||
+            "Invalid coordinator code"
+          );
+
+        }
+
+
+        sessionStorage.setItem(
+          "xyf_coord_token",
+          data.token
+        );
+
+
+        show("dashboard");
+
+
+        await loadDashboard();
+
+
+        socket.emit(
+          "coordinator:join"
+        );
+
+
+      } catch (error) {
+
+        console.error(
+          "Coordinator login:",
+          error
+        );
+
+
+        $("coord-error").textContent =
+          error.message;
+
+      }
+
+    }
+  );
+
+}
+
+
+/* =========================================================
+   COORDINATOR AUTH FETCH
+========================================================= */
+
+async function authFetch(
+  url,
+  options = {}
+) {
+
+  const token =
+    sessionStorage.getItem(
+      "xyf_coord_token"
+    ) || "";
+
+
+  options.headers = {
+    ...(options.headers || {}),
+    "x-coordinator-token":
+      token
+  };
+
+
+  return fetch(
+    API + url,
+    options
+  );
+
+}
+
+
+/* =========================================================
+   LOAD DASHBOARD
+========================================================= */
+
+async function loadDashboard() {
+
+  try {
+
+    const response =
+      await authFetch(
+        "/api/coordinator/state"
+      );
+
+
+    const data =
+      await readResponse(response);
+
+
+    if (!response.ok) {
+
+      show("coordinator");
+
+      return;
+
+    }
+
+
+    renderDashboard(data);
+
+
+  } catch (error) {
+
+    console.error(
+      "Dashboard error:",
+      error
+    );
+
+    toast(
+      "Could not load dashboard"
+    );
+
+  }
+
+}
+
+
+/* =========================================================
+   LIVE DASHBOARD UPDATE
+========================================================= */
+
+socket.on(
+  "dashboard:update",
+  (data) => {
+
+    try {
+
+      renderDashboard(data);
+
+    } catch (error) {
+
+      console.error(
+        "Dashboard render error:",
+        error
+      );
+
+    }
+
+  }
+);
+
+
+/* =========================================================
+   RENDER COORDINATOR DASHBOARD
+========================================================= */
+
+function renderDashboard(data) {
+
+  const participants =
+    data.participants || [];
+
+
+  const quiz =
+    data.quiz || {};
+
+
+  /*
+    Stats
+  */
+
+  $("stat-total").textContent =
+    participants.length;
+
+
+  $("stat-live").textContent =
+    participants.filter(
+      p => p.status === "live"
+    ).length;
+
+
+  $("stat-submitted").textContent =
+    participants.filter(
+      p => p.status === "submitted"
+    ).length;
+
+
+  $("stat-status").textContent =
+    (
+      quiz.status ||
+      "waiting"
+    ).toUpperCase();
+
+
+  /*
+    Stage title
+  */
+
+  if (
+    quiz.activeStage === "A"
+  ) {
+
+    $("dash-stage-title").textContent =
+      "20 Question Quiz";
+
+  } else if (
+    quiz.activeStage === "B"
+  ) {
+
+    $("dash-stage-title").textContent =
+      "25 Scenario Quiz";
+
+  } else {
+
+    $("dash-stage-title").textContent =
+      "Waiting to start";
+
+  }
+
+
+  $("dash-stage-chip").textContent =
+    quiz.activeStage
+      ? `STAGE ${quiz.activeStage}`
+      : "IDLE";
+
+
+  /*
+    Leaderboard stage
+  */
+
+  const stage =
+    quiz.activeStage ||
+    "A";
+
+
+  const list =
+    [...participants].sort(
+      (a, b) => {
+
+        const scoreA =
+          stage === "B"
+            ? Number(a.stage_b_score || 0)
+            : Number(a.stage_a_score || 0);
+
+
+        const scoreB =
+          stage === "B"
+            ? Number(b.stage_b_score || 0)
+            : Number(b.stage_a_score || 0);
+
+
+        if (
+          scoreB !== scoreA
+        ) {
+
+          return scoreB - scoreA;
+
+        }
+
+
+        return (
+          new Date(a.joined_at || 0) -
+          new Date(b.joined_at || 0)
+        );
+
+      }
+    );
+
+
+  /*
+    Table
+  */
+
+  $("leaderboard-body").innerHTML =
+    list.map(
+      (participant, index) => {
+
+        const score =
+          stage === "B"
+            ? Number(
+                participant.stage_b_score || 0
+              )
+            : Number(
+                participant.stage_a_score || 0
+              );
+
+
+        const correct =
+          stage === "B"
+            ? Number(
+                participant.stage_b_correct || 0
+              )
+            : Number(
+                participant.stage_a_correct || 0
+              );
+
+
+        const used =
+          stage === "B"
+            ? Number(
+                participant.stage_b_used || 0
+              )
+            : Number(
+                participant.stage_a_used || 0
+              );
+
+
+        const completed =
+          participant.completed_at
+            ? new Date(
+                participant.completed_at
+              ).toLocaleTimeString()
+            : "—";
+
+
+        return `
+          <tr>
+
+            <td>
+              ${index + 1}
+            </td>
+
+            <td>
+              ${esc(participant.team_name)}
+            </td>
+
+            <td>
+              ${esc(participant.college_name)}
+            </td>
+
+            <td>
+              ${score}
+            </td>
+
+            <td>
+              ${correct}/${used}
+            </td>
+
+            <td
+              class="status-${esc(participant.status)}"
+            >
+              ${esc(
+                String(
+                  participant.status || ""
+                ).toUpperCase()
+              )}
+            </td>
+
+            <td>
+              ${completed}
+            </td>
+
+            <td>
+
+              <button
+                class="btn danger btn-delete"
+                data-delete-id="${esc(participant.id)}"
+                type="button"
+              >
+                DELETE
+              </button>
+
+            </td>
+
+          </tr>
+        `;
+
+      }
+    ).join("");
+
+
+  /*
+    Attach DELETE events
+  */
+
+  document
+    .querySelectorAll(
+      "[data-delete-id]"
+    )
+    .forEach(
+      (button) => {
+
+        button.onclick = () => {
+
+          deleteParticipant(
+            button.dataset.deleteId
+          );
+
+        };
+
+      }
+    );
+
+}
+
+
+/* =========================================================
+   DELETE PARTICIPANT
+========================================================= */
+
+async function deleteParticipant(
+  id
+) {
+
+  const confirmed =
+    confirm(
+      "Delete this participant?\n\nThis will remove their stored answers and results too."
+    );
+
+
+  if (!confirmed) {
+    return;
+  }
+
+
+  try {
+
+    const response =
+      await authFetch(
+        `/api/coordinator/participant/${encodeURIComponent(id)}`,
+        {
+          method: "DELETE"
+        }
+      );
+
+
+    const data =
+      await readResponse(response);
+
+
+    if (!response.ok) {
+
+      throw new Error(
+        data.error ||
+        "Delete failed"
+      );
+
+    }
+
+
+    toast(
+      "Participant deleted"
+    );
+
+
+    await loadDashboard();
+
+
+  } catch (error) {
+
+    console.error(
+      "Delete error:",
+      error
+    );
+
+
+    toast(
+      error.message
+    );
+
+  }
+
+}
+
+
+/* =========================================================
+   START QUIZ — COORDINATOR
+========================================================= */
+
+$("start-a").onclick =
+  () => {
+
+    startQuizCoordinator("A");
+
+  };
+
+
+$("start-b").onclick =
+  () => {
+
+    startQuizCoordinator("B");
+
+  };
+
+
+async function startQuizCoordinator(
+  stage
+) {
+
+  try {
+
+    const response =
+      await authFetch(
+        "/api/coordinator/start",
+        {
+          method: "POST",
+
+          headers: {
+            "Content-Type":
+              "application/json"
+          },
+
+          body: JSON.stringify({
+            stage
+          })
+        }
+      );
+
+
+    const data =
+      await readResponse(response);
+
+
+    if (!response.ok) {
+
+      throw new Error(
+        data.error ||
+        "Could not start quiz"
+      );
+
+    }
+
+
+    toast(
+      stage === "A"
+        ? "20-question quiz started"
+        : "25-scenario quiz started"
+    );
+
+
+    await loadDashboard();
+
+
+  } catch (error) {
+
+    console.error(
+      "Start quiz error:",
+      error
+    );
+
+
+    toast(
+      error.message
+    );
+
+  }
+
+}
+
+
+/* =========================================================
+   FINISH CURRENT QUIZ — COORDINATOR
+========================================================= */
+
+$("finish-live").onclick =
+  async () => {
+
+    const confirmed =
+      confirm(
+        "Finish the current quiz for all participants?"
+      );
+
+
+    if (!confirmed) {
+      return;
+    }
+
+
+    try {
+
+      const response =
+        await authFetch(
+          "/api/coordinator/finish",
+          {
+            method: "POST"
+          }
+        );
+
+
+      const data =
+        await readResponse(response);
+
+
+      if (!response.ok) {
+
+        throw new Error(
+          data.error ||
+          "Could not finish quiz"
+        );
+
+      }
+
+
+      toast(
+        "Current quiz finished"
+      );
+
+
+      await loadDashboard();
+
+
+    } catch (error) {
+
+      console.error(
+        "Finish current quiz:",
+        error
+      );
+
+
+      toast(
+        error.message
+      );
+
+    }
+
+  };
+
+
+/* =========================================================
+   CSV EXPORT
+========================================================= */
+
+$("export-csv").onclick =
+  async () => {
+
+    try {
+
+      const response =
+        await authFetch(
+          "/api/coordinator/export"
+        );
+
+
+      if (!response.ok) {
+
+        const data =
+          await readResponse(response);
+
+        throw new Error(
+          data.error ||
+          "Export failed"
+        );
+
+      }
+
+
+      const blob =
+        await response.blob();
+
+
+      const url =
+        URL.createObjectURL(blob);
+
+
+      const link =
+        document.createElement("a");
+
+
+      link.href = url;
+
+      link.download =
+        "xyfronix-ai-prompt-battle-results.csv";
+
+
+      document.body.appendChild(
+        link
+      );
+
+
+      link.click();
+
+
+      link.remove();
+
+
+      URL.revokeObjectURL(
+        url
+      );
+
+
+      toast(
+        "CSV exported"
+      );
+
+
+    } catch (error) {
+
+      console.error(
+        "CSV error:",
+        error
+      );
+
+
+      toast(
+        error.message
+      );
+
+    }
+
+  };
+
+
+/* =========================================================
+   RESTORE PARTICIPANT SESSION
+========================================================= */
+
+(async function restoreParticipant() {
+
+  const id =
+    sessionStorage.getItem(
+      "xyf_participant_id"
+    );
+
+
+  if (!id) {
+    return;
+  }
+
+
+  try {
+
+    const response =
+      await fetch(
+        `${API}/api/participant/${encodeURIComponent(id)}`
+      );
+
+
+    if (!response.ok) {
+
+      sessionStorage.removeItem(
+        "xyf_participant_id"
+      );
+
+      return;
+
+    }
+
+
+    const participant =
+      await readResponse(response);
+
+
+    state.participant =
+      participant;
+
+
+    $("waiting-team").textContent =
+      participant.team_name.toUpperCase();
+
+
+    $("waiting-college").textContent =
+      participant.college_name;
+
+
+    socket.emit(
+      "participant:join-room",
+      {
+        participantId: id
+      }
+    );
+
+
+  } catch (error) {
+
+    console.error(
+      "Session restore error:",
+      error
+    );
+
+  }
+
 })();
+
+
+/* =========================================================
+   INITIAL CONNECTION STATUS
+========================================================= */
+
+if (socket.connected) {
+
+  setConnection(true);
+
+} else {
+
+  setConnection(false);
+
+}
+
+
+console.log(
+  "XYFRONIX '26 AI Prompt Battle loaded."
+);
+
+console.log(
+  "Backend API:",
+  API
+);
