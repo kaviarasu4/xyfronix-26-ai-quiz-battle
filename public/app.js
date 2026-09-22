@@ -729,7 +729,7 @@ async function startStage(
       durationSeconds ||
       (
         stage === "A"
-          ? 300
+          ? 600
           : 600
       )
     );
