@@ -19,9 +19,11 @@ const io = new Server(server, {
 });
 
 const PORT = Number(process.env.PORT || 4000);
-const COORDINATOR_CODE = process.env.COORDINATOR_CODE || "XYF26";
+const COORDINATOR_CODE =
+  process.env.COORDINATOR_CODE || "XYF26";
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
+
 const SUPABASE_KEY =
   process.env.SUPABASE_SECRET_KEY ||
   process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -29,24 +31,23 @@ const SUPABASE_KEY =
 const PUBLIC_DIR = path.join(__dirname, "public");
 
 /* =========================================================
-   MIDDLEWARE
+MIDDLEWARE
 ========================================================= */
 
 app.use(cors());
-app.use(express.json({ limit: "1mb" }));
 
-/*
-  Static files:
-  /index.html
-  /app.js
-  /config.js
-  /style.css
-  /logo.png
-*/
-app.use(express.static(PUBLIC_DIR));
+app.use(
+  express.json({
+    limit: "1mb"
+  })
+);
+
+app.use(
+  express.static(PUBLIC_DIR)
+);
 
 /* =========================================================
-   SUPABASE
+SUPABASE
 ========================================================= */
 
 if (!SUPABASE_URL || !SUPABASE_KEY) {
@@ -57,21 +58,28 @@ if (!SUPABASE_URL || !SUPABASE_KEY) {
 
 const supabase =
   SUPABASE_URL && SUPABASE_KEY
-    ? createClient(SUPABASE_URL, SUPABASE_KEY, {
-        auth: {
-          persistSession: false
+    ? createClient(
+        SUPABASE_URL,
+        SUPABASE_KEY,
+        {
+          auth: {
+            persistSession: false
+          }
         }
-      })
+      )
     : null;
 
 /* =========================================================
-   QUIZ DATA
+QUIZ DATA
 ========================================================= */
 
 const QUIZZES = {
   A: {
     title: "AI Prompt Challenge",
-    duration: 5 * 60,
+
+    // 10 MINUTES
+    duration: 10 * 60,
+
     marks: 5,
 
     questions: [
@@ -299,7 +307,10 @@ const QUIZZES = {
 
   B: {
     title: "AI Scenario Challenge",
+
+    // 10 MINUTES
     duration: 10 * 60,
+
     marks: 4,
 
     questions: [
@@ -582,7 +593,7 @@ const QUIZZES = {
 };
 
 /* =========================================================
-   MEMORY
+MEMORY
 ========================================================= */
 
 const memory = {
@@ -595,21 +606,15 @@ const memory = {
     durationSeconds: 0
   },
 
-  /*
-    participantId:stage:index
-    -> randomized option order
-  */
   displayOrders: new Map(),
 
-  /*
-    Prevent duplicate answer submissions.
-  */
   answersA: new Set(),
+
   answersB: new Set()
 };
 
 /* =========================================================
-   HELPERS
+HELPERS
 ========================================================= */
 
 function stageQuestions(stage) {
@@ -621,51 +626,82 @@ function sanitizeParticipant(p) {
 }
 
 function randomOrder(length) {
-  const order = Array.from({ length }, (_, i) => i);
+  const order = Array.from(
+    { length },
+    (_, i) => i
+  );
 
-  for (let i = order.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
+  for (
+    let i = order.length - 1;
+    i > 0;
+    i--
+  ) {
+    const j = Math.floor(
+      Math.random() * (i + 1)
+    );
 
-    [order[i], order[j]] = [order[j], order[i]];
+    [order[i], order[j]] = [
+      order[j],
+      order[i]
+    ];
   }
 
   return order;
 }
 
 /* =========================================================
-   SUPABASE HELPERS
+SUPABASE HELPERS
 ========================================================= */
 
-async function dbInsertParticipant(participant) {
+async function dbInsertParticipant(
+  participant
+) {
   if (!supabase) return;
 
   try {
-    const { error } = await supabase
-      .from("participants")
-      .insert(participant);
+    const { error } =
+      await supabase
+        .from("participants")
+        .insert(participant);
 
     if (error) {
-      console.error("Supabase participant insert error:", error);
+      console.error(
+        "Supabase participant insert error:",
+        error
+      );
     }
   } catch (error) {
-    console.error("Supabase insert exception:", error);
+    console.error(
+      "Supabase insert exception:",
+      error
+    );
   }
 }
 
-async function dbUpdateParticipant(id, patch) {
+async function dbUpdateParticipant(
+  id,
+  patch
+) {
   if (!supabase) return;
 
   try {
-    const { error } = await supabase
-      .from("participants")
-      .update(patch)
-      .eq("id", id);
+    const { error } =
+      await supabase
+        .from("participants")
+        .update(patch)
+        .eq("id", id);
 
     if (error) {
-      console.error("Supabase participant update error:", error);
+      console.error(
+        "Supabase participant update error:",
+        error
+      );
     }
   } catch (error) {
-    console.error("Supabase update exception:", error);
+    console.error(
+      "Supabase update exception:",
+      error
+    );
   }
 }
 
@@ -673,22 +709,30 @@ async function dbInsertAnswer(row) {
   if (!supabase) return;
 
   try {
-    const { error } = await supabase
-      .from("answers")
-      .upsert(row, {
-        onConflict: "participant_id,stage,question_index"
-      });
+    const { error } =
+      await supabase
+        .from("answers")
+        .upsert(row, {
+          onConflict:
+            "participant_id,stage,question_index"
+        });
 
     if (error) {
-      console.error("Supabase answer insert error:", error);
+      console.error(
+        "Supabase answer insert error:",
+        error
+      );
     }
   } catch (error) {
-    console.error("Supabase answer exception:", error);
+    console.error(
+      "Supabase answer exception:",
+      error
+    );
   }
 }
 
 /* =========================================================
-   DASHBOARD
+DASHBOARD
 ========================================================= */
 
 function dashboardState() {
@@ -709,7 +753,7 @@ function broadcastDashboard() {
 }
 
 /* =========================================================
-   RANKING
+RANKING
 ========================================================= */
 
 async function rankFor(stage) {
@@ -737,8 +781,8 @@ async function rankFor(stage) {
 }
 
 /* =========================================================
-   PUBLIC QUESTION
-   RANDOM OPTION ORDER
+PUBLIC QUESTION
+RANDOM OPTION ORDER
 ========================================================= */
 
 function publicQuestion(
@@ -746,7 +790,8 @@ function publicQuestion(
   index,
   participantId
 ) {
-  const q = stageQuestions(stage)[index];
+  const q =
+    stageQuestions(stage)[index];
 
   if (!q) return null;
 
@@ -768,35 +813,28 @@ function publicQuestion(
   return {
     index,
 
-    total: stageQuestions(stage).length,
+    total:
+      stageQuestions(stage).length,
 
-    question: q.q,
+    question:
+      q.q,
 
-    /*
-      These are shuffled options.
-    */
-    options: order.map(
-      (originalIndex) =>
-        q.o[originalIndex]
-    ),
+    options:
+      order.map(
+        (originalIndex) =>
+          q.o[originalIndex]
+      ),
 
-    /*
-      Example:
-      [2,0,3,1]
+    optionMap:
+      order,
 
-      means displayed A = original C,
-      displayed B = original A,
-      displayed C = original D,
-      displayed D = original B.
-    */
-    optionMap: order,
-
-    marks: QUIZZES[stage].marks
+    marks:
+      QUIZZES[stage].marks
   };
 }
 
 /* =========================================================
-   HEALTH
+HEALTH
 ========================================================= */
 
 app.get(
@@ -811,7 +849,7 @@ app.get(
 );
 
 /* =========================================================
-   PARTICIPANT JOIN
+PARTICIPANT JOIN
 ========================================================= */
 
 app.post(
@@ -828,7 +866,10 @@ app.post(
           req.body.collegeName || ""
         ).trim();
 
-      if (!teamName || !collegeName) {
+      if (
+        !teamName ||
+        !collegeName
+      ) {
         return res.status(400).json({
           error:
             "Team name and college name are required."
@@ -851,11 +892,14 @@ app.post(
       const participant = {
         id,
 
-        team_name: teamName,
+        team_name:
+          teamName,
 
-        college_name: collegeName,
+        college_name:
+          collegeName,
 
-        status: "waiting",
+        status:
+          "waiting",
 
         stage_a_score: 0,
         stage_a_correct: 0,
@@ -868,7 +912,8 @@ app.post(
         joined_at:
           new Date().toISOString(),
 
-        completed_at: null
+        completed_at:
+          null
       };
 
       memory.participants.set(
@@ -900,7 +945,7 @@ app.post(
 );
 
 /* =========================================================
-   PARTICIPANT STATE
+PARTICIPANT STATE
 ========================================================= */
 
 app.get(
@@ -925,7 +970,7 @@ app.get(
 );
 
 /* =========================================================
-   LOAD QUESTION
+LOAD QUESTION
 ========================================================= */
 
 app.get(
@@ -938,7 +983,9 @@ app.get(
         ).toUpperCase();
 
       const index =
-        Number(req.params.index);
+        Number(
+          req.params.index
+        );
 
       if (
         !QUIZZES[stage] ||
@@ -978,7 +1025,7 @@ app.get(
 );
 
 /* =========================================================
-   SUBMIT ANSWER
+SUBMIT ANSWER
 ========================================================= */
 
 app.post(
@@ -1005,9 +1052,6 @@ app.post(
           req.body.selectedOption
         );
 
-      /*
-        Validate participant.
-      */
       const participant =
         memory.participants.get(
           participantId
@@ -1020,9 +1064,6 @@ app.post(
         });
       }
 
-      /*
-        Validate stage.
-      */
       if (!QUIZZES[stage]) {
         return res.status(400).json({
           error:
@@ -1030,9 +1071,6 @@ app.post(
         });
       }
 
-      /*
-        Quiz must be running.
-      */
       if (
         memory.quiz.status !==
           "running" ||
@@ -1045,9 +1083,6 @@ app.post(
         });
       }
 
-      /*
-        Validate question.
-      */
       const question =
         stageQuestions(stage)[
           questionIndex
@@ -1068,16 +1103,6 @@ app.post(
         });
       }
 
-      /*
-        IMPORTANT:
-
-        selectedOption coming from frontend
-        is the ORIGINAL question option index.
-
-        app.js converts shuffled displayed
-        position -> original index using optionMap.
-      */
-
       const answerSet =
         stage === "A"
           ? memory.answersA
@@ -1086,9 +1111,6 @@ app.post(
       const answerKey =
         `${participantId}:${stage}:${questionIndex}`;
 
-      /*
-        Prevent double submit.
-      */
       if (
         answerSet.has(answerKey)
       ) {
@@ -1100,9 +1122,6 @@ app.post(
 
       answerSet.add(answerKey);
 
-      /*
-        Fields.
-      */
       const usedField =
         stage === "A"
           ? "stage_a_used"
@@ -1118,9 +1137,6 @@ app.post(
           ? "stage_a_correct"
           : "stage_b_correct";
 
-      /*
-        Check answer.
-      */
       const correct =
         selectedOption ===
         question.a;
@@ -1130,9 +1146,6 @@ app.post(
           ? QUIZZES[stage].marks
           : 0;
 
-      /*
-        Update participant.
-      */
       participant[usedField] += 1;
 
       participant[scoreField] +=
@@ -1143,7 +1156,8 @@ app.post(
           1;
       }
 
-      participant.status = "live";
+      participant.status =
+        "live";
 
       await dbUpdateParticipant(
         participant.id,
@@ -1157,13 +1171,11 @@ app.post(
           [correctField]:
             participant[correctField],
 
-          status: "live"
+          status:
+            "live"
         }
       );
 
-      /*
-        Save answer.
-      */
       await dbInsertAnswer({
         participant_id:
           participant.id,
@@ -1186,9 +1198,6 @@ app.post(
           new Date().toISOString()
       });
 
-      /*
-        Calculate current position.
-      */
       const rows =
         await rankFor(stage);
 
@@ -1199,9 +1208,6 @@ app.post(
             participant.id
         ) + 1;
 
-      /*
-        Update participant browser.
-      */
       io.to(
         `participant:${participant.id}`
       ).emit(
@@ -1209,14 +1215,8 @@ app.post(
         participant
       );
 
-      /*
-        Update coordinator dashboard.
-      */
       broadcastDashboard();
 
-      /*
-        ALWAYS RETURN JSON.
-      */
       return res.status(200).json({
         ok: true,
 
@@ -1238,11 +1238,6 @@ app.post(
         error
       );
 
-      /*
-        VERY IMPORTANT:
-        Even if backend crashes, return JSON,
-        NOT index.html.
-      */
       return res.status(500).json({
         error:
           "Server error while submitting answer."
@@ -1252,7 +1247,7 @@ app.post(
 );
 
 /* =========================================================
-   FINISH PARTICIPANT QUIZ
+FINISH PARTICIPANT QUIZ
 ========================================================= */
 
 app.post(
@@ -1288,13 +1283,6 @@ app.post(
         });
       }
 
-      /*
-        After Quiz A:
-        participant waits for Quiz B.
-
-        After Quiz B:
-        participant is submitted.
-      */
       participant.status =
         stage === "A"
           ? "waiting"
@@ -1336,7 +1324,7 @@ app.post(
 );
 
 /* =========================================================
-   PARTICIPANT SUMMARY
+PARTICIPANT SUMMARY
 ========================================================= */
 
 app.get(
@@ -1410,7 +1398,7 @@ app.get(
 );
 
 /* =========================================================
-   COORDINATOR AUTH
+COORDINATOR AUTH
 ========================================================= */
 
 const coordinatorTokens =
@@ -1472,7 +1460,7 @@ app.post(
 );
 
 /* =========================================================
-   COORDINATOR STATE
+COORDINATOR STATE
 ========================================================= */
 
 app.get(
@@ -1486,7 +1474,7 @@ app.get(
 );
 
 /* =========================================================
-   START QUIZ
+START QUIZ
 ========================================================= */
 
 app.post(
@@ -1506,16 +1494,6 @@ app.post(
         });
       }
 
-      /*
-        Only participants who have not completed
-        the current overall flow are included.
-
-        After Quiz A:
-        status = waiting
-
-        After Quiz B:
-        status = submitted
-      */
       const participants =
         [
           ...memory.participants.values()
@@ -1525,7 +1503,9 @@ app.post(
             "submitted"
         );
 
-      if (!participants.length) {
+      if (
+        !participants.length
+      ) {
         return res.status(400).json({
           error:
             "No waiting participants found."
@@ -1537,23 +1517,18 @@ app.post(
           (p) => p.id
         );
 
-      /*
-        Clear duplicate-answer protection
-        for the stage being started.
-      */
       if (stage === "A") {
         memory.answersA.clear();
       } else {
         memory.answersB.clear();
       }
 
-      /*
-        New quiz state.
-      */
       memory.quiz = {
-        activeStage: stage,
+        activeStage:
+          stage,
 
-        status: "running",
+        status:
+          "running",
 
         startedAt:
           new Date().toISOString(),
@@ -1562,9 +1537,6 @@ app.post(
           QUIZZES[stage].duration
       };
 
-      /*
-        Set participants live.
-      */
       for (
         const participant of participants
       ) {
@@ -1574,14 +1546,12 @@ app.post(
         await dbUpdateParticipant(
           participant.id,
           {
-            status: "live"
+            status:
+              "live"
           }
         );
       }
 
-      /*
-        Save quiz state to Supabase.
-      */
       if (supabase) {
         const { error } =
           await supabase
@@ -1610,11 +1580,9 @@ app.post(
         }
       }
 
-      /*
-        Tell only selected participants
-        to start.
-      */
-      io.to("participants").emit(
+      io.to(
+        "participants"
+      ).emit(
         "quiz:started",
         {
           stage,
@@ -1652,7 +1620,7 @@ app.post(
 );
 
 /* =========================================================
-   FINISH CURRENT QUIZ
+FINISH CURRENT QUIZ
 ========================================================= */
 
 app.post(
@@ -1704,9 +1672,11 @@ app.post(
       }
 
       memory.quiz = {
-        activeStage: stage,
+        activeStage:
+          stage,
 
-        status: "finished",
+        status:
+          "finished",
 
         startedAt:
           memory.quiz.startedAt,
@@ -1737,7 +1707,9 @@ app.post(
         }
       }
 
-      io.to("participants").emit(
+      io.to(
+        "participants"
+      ).emit(
         "quiz:finished",
         {
           final:
@@ -1765,7 +1737,7 @@ app.post(
 );
 
 /* =========================================================
-   DELETE PARTICIPANT
+DELETE PARTICIPANT
 ========================================================= */
 
 app.delete(
@@ -1788,19 +1760,17 @@ app.delete(
         });
       }
 
-      /*
-        Delete answers first.
-      */
       if (supabase) {
         const {
           error: answerError
-        } = await supabase
-          .from("answers")
-          .delete()
-          .eq(
-            "participant_id",
-            id
-          );
+        } =
+          await supabase
+            .from("answers")
+            .delete()
+            .eq(
+              "participant_id",
+              id
+            );
 
         if (answerError) {
           console.error(
@@ -1809,15 +1779,16 @@ app.delete(
           );
         }
 
-        /*
-          Delete participant.
-        */
         const {
           error: participantError
-        } = await supabase
-          .from("participants")
-          .delete()
-          .eq("id", id);
+        } =
+          await supabase
+            .from("participants")
+            .delete()
+            .eq(
+              "id",
+              id
+            );
 
         if (participantError) {
           console.error(
@@ -1827,16 +1798,10 @@ app.delete(
         }
       }
 
-      /*
-        Remove from memory.
-      */
       memory.participants.delete(
         id
       );
 
-      /*
-        Remove randomized question mappings.
-      */
       for (
         const key of
         memory.displayOrders.keys()
@@ -1852,9 +1817,6 @@ app.delete(
         }
       }
 
-      /*
-        Remove duplicate-answer locks.
-      */
       for (
         const set of [
           memory.answersA,
@@ -1874,10 +1836,6 @@ app.delete(
         }
       }
 
-      /*
-        Tell participant browser
-        that it has been removed.
-      */
       io.to(
         `participant:${id}`
       ).emit(
@@ -1905,7 +1863,7 @@ app.delete(
 );
 
 /* =========================================================
-   CSV EXPORT
+CSV EXPORT
 ========================================================= */
 
 app.get(
@@ -1944,31 +1902,32 @@ app.get(
 
       const csvRows =
         rows.map(
-          (p) => [
-            p.team_name,
-            p.college_name,
-            p.stage_a_score,
-            p.stage_a_correct,
-            p.stage_a_used,
-            p.stage_b_score,
-            p.stage_b_correct,
-            p.stage_b_used,
-            p.stage_a_score +
+          (p) =>
+            [
+              p.team_name,
+              p.college_name,
+              p.stage_a_score,
+              p.stage_a_correct,
+              p.stage_a_used,
               p.stage_b_score,
-            p.status,
-            p.joined_at,
-            p.completed_at || ""
-          ]
-            .map(
-              (value) =>
-                `"${String(
-                  value
-                ).replace(
-                  /"/g,
-                  '""'
-                )}"`
-            )
-            .join(",")
+              p.stage_b_correct,
+              p.stage_b_used,
+              p.stage_a_score +
+                p.stage_b_score,
+              p.status,
+              p.joined_at,
+              p.completed_at || ""
+            ]
+              .map(
+                (value) =>
+                  `"${String(
+                    value
+                  ).replace(
+                    /"/g,
+                    '""'
+                  )}"`
+              )
+              .join(",")
         );
 
       const csv = [
@@ -2002,7 +1961,7 @@ app.get(
 );
 
 /* =========================================================
-   SOCKET.IO
+SOCKET.IO
 ========================================================= */
 
 io.on(
@@ -2013,11 +1972,6 @@ io.on(
       socket.id
     );
 
-    /*
-      Participant joins:
-      - global participant room
-      - personal participant room
-    */
     socket.on(
       "participant:join-room",
       ({ participantId }) => {
@@ -2044,9 +1998,6 @@ io.on(
       }
     );
 
-    /*
-      Coordinator room.
-    */
     socket.on(
       "coordinator:join",
       () => {
@@ -2074,7 +2025,7 @@ io.on(
 );
 
 /* =========================================================
-   DASHBOARD LIVE REFRESH
+DASHBOARD LIVE REFRESH
 ========================================================= */
 
 setInterval(
@@ -2085,17 +2036,12 @@ setInterval(
 );
 
 /* =========================================================
-   SPA FALLBACK
-   IMPORTANT:
-   API ROUTES NEVER GET index.html
+SPA FALLBACK
+API ROUTES NEVER GET index.html
 ========================================================= */
 
 app.use(
   (req, res, next) => {
-    /*
-      If an API route wasn't found,
-      return JSON instead of index.html.
-    */
     if (
       req.path.startsWith(
         "/api/"
@@ -2111,9 +2057,6 @@ app.use(
       });
     }
 
-    /*
-      Socket.IO is handled by Socket.IO.
-    */
     if (
       req.path.startsWith(
         "/socket.io/"
@@ -2122,9 +2065,6 @@ app.use(
       return next();
     }
 
-    /*
-      SPA pages are GET only.
-    */
     if (
       req.method !== "GET"
     ) {
@@ -2144,7 +2084,7 @@ app.use(
 );
 
 /* =========================================================
-   START SERVER
+START SERVER
 ========================================================= */
 
 server.listen(
